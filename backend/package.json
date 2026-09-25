@@ -1,0 +1,39 @@
+{
+  "name": "medicore-hms-backend",
+  "version": "1.0.0",
+  "description": "MediCore Hospital Management System — Backend API",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate",
+    "db:seed": "node prisma/seed.js",
+    "db:reset": "prisma migrate reset --force && node prisma/seed.js",
+    "db:studio": "prisma studio",
+    "test": "NODE_ENV=test node --experimental-vm-modules node_modules/.bin/jest",
+    "test:watch": "NODE_ENV=test node --experimental-vm-modules node_modules/.bin/jest --watch"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.0",
+    "@prisma/client": "^5.17.0",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "openai": "^4.56.0",
+    "winston": "^3.14.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.4",
+    "prisma": "^5.17.0",
+    "supertest": "^7.0.0"
+  }
+}

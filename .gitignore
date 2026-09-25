@@ -1,0 +1,33 @@
+# Environment variables — NEVER commit real .env files
+.env
+.env.local
+.env.production
+.env.staging
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+
+# Prisma generated client (regenerated on install)
+backend/node_modules/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test coverage
+coverage/
