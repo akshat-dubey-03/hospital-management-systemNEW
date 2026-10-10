@@ -1,0 +1,290 @@
+-- MediCore DBMS Phase 1 execution evidence
+-- Run (UTC): 2026-10-10T18:06:59Z
+-- Database: medicore_dbms_test (disposable Docker container medicore_dbms_test, image postgres:15)
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+-- psql flags: -v ON_ERROR_STOP=1 -X -e
+-- File: sql/01_ddl.sql
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION
+CREATE TYPE "Role" AS ENUM ('PATIENT', 'DOCTOR', 'ADMIN');
+CREATE TYPE
+CREATE TYPE "Gender" AS ENUM ('MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY');
+CREATE TYPE
+CREATE TYPE "AppointmentStatus" AS ENUM (
+  'BOOKED',
+  'CONFIRMED',
+  'COMPLETED',
+  'CANCELLED_BY_PATIENT',
+  'CANCELLED_BY_DOCTOR',
+  'CANCELLED_BY_ADMIN'
+);
+CREATE TYPE
+CREATE TYPE "QueryStatus" AS ENUM ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED');
+CREATE TYPE
+CREATE TYPE "MessageRole" AS ENUM ('USER', 'ASSISTANT');
+CREATE TYPE
+CREATE TABLE "users" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "email" VARCHAR(255) NOT NULL,
+    "passwordHash" VARCHAR(255) NOT NULL,
+    "role" "Role" NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE TABLE "patients" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "userId" UUID NOT NULL,
+    "firstName" VARCHAR(100) NOT NULL,
+    "lastName" VARCHAR(100) NOT NULL,
+    "dateOfBirth" DATE,
+    "gender" "Gender",
+    "phone" VARCHAR(20),
+    "address" TEXT,
+    "bloodGroup" VARCHAR(5),
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "patients_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE TABLE "departments" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "name" VARCHAR(100) NOT NULL,
+    "description" TEXT,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "departments_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE TABLE "doctors" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "userId" UUID NOT NULL,
+    "departmentId" UUID NOT NULL,
+    "firstName" VARCHAR(100) NOT NULL,
+    "lastName" VARCHAR(100) NOT NULL,
+    "specialization" VARCHAR(200) NOT NULL,
+    "qualification" VARCHAR(200) NOT NULL,
+    "experienceYears" SMALLINT,
+    "bio" TEXT,
+    "phone" VARCHAR(20),
+    "consultationFee" DECIMAL(10, 2),
+    "slotDurationMinutes" SMALLINT NOT NULL DEFAULT 30,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "doctors_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE TABLE "doctor_availability" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "doctorId" UUID NOT NULL,
+    "dayOfWeek" SMALLINT NOT NULL,
+    "startTime" VARCHAR(5) NOT NULL,
+    "endTime" VARCHAR(5) NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "doctor_availability_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE TABLE "appointments" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "patientId" UUID NOT NULL,
+    "doctorId" UUID NOT NULL,
+    "appointmentDate" DATE NOT NULL,
+    "startTime" VARCHAR(5) NOT NULL,
+    "endTime" VARCHAR(5) NOT NULL,
+    "status" "AppointmentStatus" NOT NULL DEFAULT 'BOOKED',
+    "reasonForVisit" TEXT,
+    "notes" TEXT,
+    "cancellationReason" TEXT,
+    "cancelledAt" TIMESTAMPTZ,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "appointments_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE TABLE "feedback" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "patientId" UUID NOT NULL,
+    "subject" VARCHAR(200) NOT NULL,
+    "message" TEXT NOT NULL,
+    "rating" SMALLINT,
+    "isRead" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "feedback_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE TABLE "queries" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "patientId" UUID NOT NULL,
+    "subject" VARCHAR(200) NOT NULL,
+    "message" TEXT NOT NULL,
+    "status" "QueryStatus" NOT NULL DEFAULT 'OPEN',
+    "adminResponse" TEXT,
+    "respondedAt" TIMESTAMPTZ,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "queries_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE TABLE "chat_conversations" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "patientId" UUID NOT NULL,
+    "title" VARCHAR(200),
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "chat_conversations_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE TABLE "chat_messages" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "conversationId" UUID NOT NULL,
+    "role" "MessageRole" NOT NULL,
+    "content" TEXT NOT NULL,
+    "tokenCount" INTEGER,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "chat_messages_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+CREATE INDEX
+CREATE UNIQUE INDEX "patients_userId_key" ON "patients"("userId");
+CREATE INDEX
+CREATE UNIQUE INDEX "departments_name_key" ON "departments"("name");
+CREATE INDEX
+CREATE UNIQUE INDEX "doctors_userId_key" ON "doctors"("userId");
+CREATE INDEX
+CREATE UNIQUE INDEX "doctor_availability_doctorId_dayOfWeek_startTime_key"
+  ON "doctor_availability"("doctorId", "dayOfWeek", "startTime");
+CREATE INDEX
+CREATE INDEX "appointments_patientId_idx" ON "appointments"("patientId");
+CREATE INDEX
+CREATE INDEX "appointments_doctorId_idx" ON "appointments"("doctorId");
+CREATE INDEX
+CREATE INDEX "appointments_appointmentDate_idx" ON "appointments"("appointmentDate");
+CREATE INDEX
+CREATE INDEX "appointments_doctorId_appointmentDate_idx"
+  ON "appointments"("doctorId", "appointmentDate");
+CREATE INDEX
+CREATE INDEX "feedback_patientId_idx" ON "feedback"("patientId");
+CREATE INDEX
+CREATE INDEX "queries_patientId_idx" ON "queries"("patientId");
+CREATE INDEX
+CREATE INDEX "chat_conversations_patientId_idx" ON "chat_conversations"("patientId");
+CREATE INDEX
+CREATE INDEX "chat_messages_conversationId_createdAt_idx"
+  ON "chat_messages"("conversationId", "createdAt");
+CREATE INDEX
+ALTER TABLE "patients"
+  ADD CONSTRAINT "patients_userId_fkey"
+  FOREIGN KEY ("userId") REFERENCES "users"("id")
+  ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE
+ALTER TABLE "doctors"
+  ADD CONSTRAINT "doctors_userId_fkey"
+  FOREIGN KEY ("userId") REFERENCES "users"("id")
+  ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE
+ALTER TABLE "doctors"
+  ADD CONSTRAINT "doctors_departmentId_fkey"
+  FOREIGN KEY ("departmentId") REFERENCES "departments"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE
+ALTER TABLE "doctor_availability"
+  ADD CONSTRAINT "doctor_availability_doctorId_fkey"
+  FOREIGN KEY ("doctorId") REFERENCES "doctors"("id")
+  ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE
+ALTER TABLE "appointments"
+  ADD CONSTRAINT "appointments_patientId_fkey"
+  FOREIGN KEY ("patientId") REFERENCES "patients"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE
+ALTER TABLE "appointments"
+  ADD CONSTRAINT "appointments_doctorId_fkey"
+  FOREIGN KEY ("doctorId") REFERENCES "doctors"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE
+ALTER TABLE "feedback"
+  ADD CONSTRAINT "feedback_patientId_fkey"
+  FOREIGN KEY ("patientId") REFERENCES "patients"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE
+ALTER TABLE "queries"
+  ADD CONSTRAINT "queries_patientId_fkey"
+  FOREIGN KEY ("patientId") REFERENCES "patients"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE
+ALTER TABLE "chat_conversations"
+  ADD CONSTRAINT "chat_conversations_patientId_fkey"
+  FOREIGN KEY ("patientId") REFERENCES "patients"("id")
+  ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE
+ALTER TABLE "chat_messages"
+  ADD CONSTRAINT "chat_messages_conversationId_fkey"
+  FOREIGN KEY ("conversationId") REFERENCES "chat_conversations"("id")
+  ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE
+CREATE UNIQUE INDEX IF NOT EXISTS "appointments_active_doctor_slot_unique"
+ON "appointments" ("doctorId", "appointmentDate", "startTime")
+WHERE "status" NOT IN (
+  'CANCELLED_BY_PATIENT',
+  'CANCELLED_BY_DOCTOR',
+  'CANCELLED_BY_ADMIN'
+);
+CREATE INDEX
+EXIT_CODE=0
+
+-- Catalog verification
+                List of relations
+ Schema |        Name         | Type  |  Owner   
+--------+---------------------+-------+----------
+ public | appointments        | table | postgres
+ public | chat_conversations  | table | postgres
+ public | chat_messages       | table | postgres
+ public | departments         | table | postgres
+ public | doctor_availability | table | postgres
+ public | doctors             | table | postgres
+ public | feedback            | table | postgres
+ public | patients            | table | postgres
+ public | queries             | table | postgres
+ public | users               | table | postgres
+(10 rows)
+
+             List of data types
+ Schema |        Name         | Description 
+--------+---------------------+-------------
+ public | "AppointmentStatus" | 
+ public | "Gender"            | 
+ public | "MessageRole"       | 
+ public | "QueryStatus"       | 
+ public | "Role"              | 
+(5 rows)
+
+ fk_count 
+----------
+       10
+(1 row)
+
+ index_count 
+-------------
+          24
+(1 row)
+
+                                                                                                                                                   indexdef                                                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX appointments_active_doctor_slot_unique ON public.appointments USING btree ("doctorId", "appointmentDate", "startTime") WHERE (status <> ALL (ARRAY['CANCELLED_BY_PATIENT'::"AppointmentStatus", 'CANCELLED_BY_DOCTOR'::"AppointmentStatus", 'CANCELLED_BY_ADMIN'::"AppointmentStatus"]))
+(1 row)
+
