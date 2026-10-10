@@ -31,3 +31,5 @@ Thumbs.db
 
 # Test coverage
 coverage/
+
+dbms_handoff_package/
