@@ -135,8 +135,8 @@ model Doctor {
   updatedAt           DateTime @updatedAt @db.Timestamptz
 
   // Relations
-  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  department   Department          @relation(fields: [departmentId], references: [id])
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department           @relation(fields: [departmentId], references: [id])
   availability DoctorAvailability[]
   appointments Appointment[]
 
@@ -150,12 +150,12 @@ model Doctor {
 // dayOfWeek: 0=Monday, 1=Tuesday, ..., 6=Sunday
 // ─────────────────────────────────────────────────────────────
 model DoctorAvailability {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  doctorId   String   @db.Uuid
-  dayOfWeek  Int      @db.SmallInt // 0=Mon, 6=Sun
-  startTime  String   @db.VarChar(5) // 'HH:MM'
-  endTime    String   @db.VarChar(5) // 'HH:MM'
-  isActive   Boolean  @default(true)
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  doctorId  String  @db.Uuid
+  dayOfWeek Int     @db.SmallInt // 0=Mon, 6=Sun
+  startTime String  @db.VarChar(5) // 'HH:MM'
+  endTime   String  @db.VarChar(5) // 'HH:MM'
+  isActive  Boolean @default(true)
 
   // Relations
   doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
@@ -187,8 +187,9 @@ model Appointment {
   updatedAt          DateTime          @updatedAt @db.Timestamptz
 
   // Relations
-  patient Patient @relation(fields: [patientId], references: [id])
-  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+  patient      Patient                  @relation(fields: [patientId], references: [id])
+  doctor       Doctor                   @relation(fields: [doctorId], references: [id])
+  statusAudits AppointmentStatusAudit[]
 
   // Indexes for common query patterns
   @@index([patientId])
@@ -196,6 +197,27 @@ model Appointment {
   @@index([appointmentDate])
   @@index([doctorId, appointmentDate])
   @@map("appointments")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: appointment_status_audit
+// History of appointment status changes. Rows are written ONLY by the
+// database trigger trg_appointments_status_audit (see migration
+// 20261011130000_dbms_triggers_audit); the application never writes here.
+// Stores no notes, reasons or patient data — just who/when/old/new.
+// ─────────────────────────────────────────────────────────────
+model AppointmentStatusAudit {
+  id            BigInt            @id @default(autoincrement())
+  appointmentId String            @db.Uuid
+  oldStatus     AppointmentStatus
+  newStatus     AppointmentStatus
+  changedAt     DateTime          @default(now()) @db.Timestamptz
+  changedBy     String            @db.VarChar(63) // database session role (session_user)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId, changedAt])
+  @@map("appointment_status_audit")
 }
 
 // ─────────────────────────────────────────────────────────────
