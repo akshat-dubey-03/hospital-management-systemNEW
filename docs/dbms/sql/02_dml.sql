@@ -14,7 +14,7 @@
 -- passwordHash values are inert placeholders, not login credentials.
 -- Dates are fixed (not CURRENT_DATE) so query results are stable.
 --
--- Executed on PostgreSQL 15.15 on 2026-10-10 (disposable DB): see ../results/02_dml_run1.txt and _run2.txt.
+-- Executed on PostgreSQL 15.15 (disposable DB): see ../results/02_dml_run.txt and 02_dml_run2.txt.
 -- =============================================================================
 
 -- =============================================================================

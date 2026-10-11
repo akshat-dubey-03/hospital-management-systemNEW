@@ -1,0 +1,153 @@
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-11T11:42:16Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p3b
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/05_integrity_constraints.sql
+
+SELECT conrelid::regclass AS table_name, conname AS constraint_name,
+       pg_get_constraintdef(oid) AS definition
+FROM pg_constraint
+WHERE contype = 'c' AND connamespace = 'public'::regnamespace
+ORDER BY conrelid::regclass::text, conname;
+     table_name      |             constraint_name              |                                                                 definition                                                                  
+---------------------+------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------
+ appointments        | appointments_time_format_chk             | CHECK (((("startTime")::text ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'::text) AND (("endTime")::text ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'::text)))
+ appointments        | appointments_time_order_chk              | CHECK ((("endTime")::text > ("startTime")::text))
+ doctor_availability | doctor_availability_day_of_week_chk      | CHECK ((("dayOfWeek" >= 0) AND ("dayOfWeek" <= 6)))
+ doctor_availability | doctor_availability_time_format_chk      | CHECK (((("startTime")::text ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'::text) AND (("endTime")::text ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'::text)))
+ doctor_availability | doctor_availability_time_order_chk       | CHECK ((("endTime")::text > ("startTime")::text))
+ doctors             | doctors_consultation_fee_nonnegative_chk | CHECK ((("consultationFee" IS NULL) OR ("consultationFee" >= (0)::numeric)))
+ doctors             | doctors_experience_years_nonnegative_chk | CHECK ((("experienceYears" IS NULL) OR ("experienceYears" >= 0)))
+ doctors             | doctors_slot_duration_positive_chk       | CHECK (("slotDurationMinutes" > 0))
+ feedback            | feedback_rating_range_chk                | CHECK (((rating IS NULL) OR ((rating >= 1) AND (rating <= 5))))
+(9 rows)
+
+DO $$
+BEGIN
+  INSERT INTO "feedback" ("patientId", "subject", "message", "rating")
+  VALUES ('00000000-0000-4000-a000-000000000201', 'chk demo', 'rating 6', 6);
+  RAISE EXCEPTION 'FAIL: rating 6 was accepted';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS rating=6 rejected: %', SQLERRM;
+END $$;
+NOTICE:  PASS rating=6 rejected: new row for relation "feedback" violates check constraint "feedback_rating_range_chk"
+DO
+DO $$
+BEGIN
+  INSERT INTO "doctor_availability" ("doctorId", "dayOfWeek", "startTime", "endTime")
+  VALUES ('00000000-0000-4000-a000-000000000301', 7, '09:00', '10:00');
+  RAISE EXCEPTION 'FAIL: dayOfWeek 7 was accepted';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS dayOfWeek=7 rejected: %', SQLERRM;
+END $$;
+DO
+DO $$
+BEGIN
+  INSERT INTO "doctor_availability" ("doctorId", "dayOfWeek", "startTime", "endTime")
+  VALUES ('00000000-0000-4000-a000-000000000301', 5, '9:00', '25:00');
+  RAISE EXCEPTION 'FAIL: malformed times were accepted';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS malformed availability times rejected: %', SQLERRM;
+END $$;
+NOTICE:  PASS dayOfWeek=7 rejected: new row for relation "doctor_availability" violates check constraint "doctor_availability_day_of_week_chk"
+NOTICE:  PASS malformed availability times rejected: new row for relation "doctor_availability" violates check constraint "doctor_availability_time_format_chk"
+DO
+DO $$
+BEGIN
+  INSERT INTO "doctor_availability" ("doctorId", "dayOfWeek", "startTime", "endTime")
+  VALUES ('00000000-0000-4000-a000-000000000301', 5, '13:00', '09:00');
+  RAISE EXCEPTION 'FAIL: end before start was accepted';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS availability end<start rejected: %', SQLERRM;
+END $$;
+NOTICE:  PASS availability end<start rejected: new row for relation "doctor_availability" violates check constraint "doctor_availability_time_order_chk"
+DO
+DO $$
+BEGIN
+  UPDATE "doctors" SET "slotDurationMinutes" = 0
+  WHERE "id" = '00000000-0000-4000-a000-000000000301';
+  RAISE EXCEPTION 'FAIL: slotDurationMinutes 0 was accepted';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS slotDurationMinutes=0 rejected: %', SQLERRM;
+END $$;
+DO
+DO $$
+BEGIN
+  UPDATE "doctors" SET "experienceYears" = -1
+  WHERE "id" = '00000000-0000-4000-a000-000000000301';
+  RAISE EXCEPTION 'FAIL: negative experienceYears was accepted';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS experienceYears=-1 rejected: %', SQLERRM;
+END $$;
+NOTICE:  PASS slotDurationMinutes=0 rejected: new row for relation "doctors" violates check constraint "doctors_slot_duration_positive_chk"
+DO
+DO $$
+BEGIN
+  UPDATE "doctors" SET "consultationFee" = -50.00
+  WHERE "id" = '00000000-0000-4000-a000-000000000301';
+  RAISE EXCEPTION 'FAIL: negative consultationFee was accepted';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS consultationFee=-50 rejected: %', SQLERRM;
+END $$;
+NOTICE:  PASS experienceYears=-1 rejected: new row for relation "doctors" violates check constraint "doctors_experience_years_nonnegative_chk"
+NOTICE:  PASS consultationFee=-50 rejected: new row for relation "doctors" violates check constraint "doctors_consultation_fee_nonnegative_chk"
+DO
+DO $$
+BEGIN
+  INSERT INTO "appointments" ("patientId", "doctorId", "appointmentDate",
+                              "startTime", "endTime", "updatedAt")
+  VALUES ('00000000-0000-4000-a000-000000000201', '00000000-0000-4000-a000-000000000301',
+          DATE '2026-12-07', '10:30', '10:00', now());
+  RAISE EXCEPTION 'FAIL: appointment end before start was accepted';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS appointment end<start rejected: %', SQLERRM;
+END $$;
+NOTICE:  PASS appointment end<start rejected: new row for relation "appointments" violates check constraint "appointments_time_order_chk"
+DO
+DO $$
+BEGIN
+  INSERT INTO "appointments" ("patientId", "doctorId", "appointmentDate",
+                              "startTime", "endTime", "updatedAt")
+  VALUES ('00000000-0000-4000-a000-000000000201', '00000000-0000-4000-a000-000000000301',
+          DATE '2026-12-07', '10am', '10:30', now());
+  RAISE EXCEPTION 'FAIL: appointment time 10am was accepted';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS appointment time 10am rejected: %', SQLERRM;
+END $$;
+DO
+BEGIN;
+NOTICE:  PASS appointment time 10am rejected: new row for relation "appointments" violates check constraint "appointments_time_format_chk"
+BEGIN
+INSERT INTO "feedback" ("patientId", "subject", "message", "rating")
+VALUES ('00000000-0000-4000-a000-000000000201', 'chk demo', 'no rating given', NULL),
+       ('00000000-0000-4000-a000-000000000201', 'chk demo', 'boundary 1', 1),
+       ('00000000-0000-4000-a000-000000000201', 'chk demo', 'boundary 5', 5);
+INSERT 0 3
+UPDATE "doctors" SET "experienceYears" = NULL, "consultationFee" = 0.00
+WHERE "id" = '00000000-0000-4000-a000-000000000306';
+UPDATE 1
+SELECT "subject", "message", "rating" FROM "feedback" WHERE "subject" = 'chk demo' ORDER BY "message";
+ subject  |     message     | rating 
+----------+-----------------+--------
+ chk demo | boundary 1      |      1
+ chk demo | boundary 5      |      5
+ chk demo | no rating given |       
+(3 rows)
+
+SELECT "lastName", "experienceYears", "consultationFee" FROM "doctors"
+WHERE "id" = '00000000-0000-4000-a000-000000000306';
+ lastName | experienceYears | consultationFee 
+----------+-----------------+-----------------
+ Rao      |                 |            0.00
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+SELECT COUNT(*) AS chk_demo_rows_left FROM "feedback" WHERE "subject" = 'chk demo';
+ chk_demo_rows_left 
+--------------------
+                  0
+(1 row)
+
+EXIT_CODE=0

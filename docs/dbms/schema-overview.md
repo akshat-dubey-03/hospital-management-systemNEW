@@ -319,19 +319,39 @@ The Prisma comment “rating 1–5” is **documentation only**. There is **no**
 - Partial unique index `appointments_active_doctor_slot_unique`
 - Column nullability and the defaults that appear in SQL (`isActive`, `slotDurationMinutes`, status enums, `createdAt`, UUID generation)
 
+### CHECK constraints (added after Review 1)
+
+Added by the additive migration `backend/prisma/migrations/20261011100000_dbms_integrity_checks`. They are also included at the end of `sql/01_ddl.sql`, and demonstrated in `sql/05_integrity_constraints.sql`. Prisma 5 cannot express CHECK constraints in `schema.prisma`; `prisma migrate diff` ignores them, so they cause no drift.
+
+| Constraint | Table | Rule | Previously enforced by |
+|------------|-------|------|------------------------|
+| `feedback_rating_range_chk` | feedback | `rating IS NULL OR rating BETWEEN 1 AND 5` | Prisma comment only |
+| `doctor_availability_day_of_week_chk` | doctor_availability | `dayOfWeek BETWEEN 0 AND 6` (0 = Monday) | Prisma comment only |
+| `doctor_availability_time_format_chk` | doctor_availability | start/end match `^([01][0-9]\|2[0-3]):[0-5][0-9]$` | nothing (admin/seed writes) |
+| `doctor_availability_time_order_chk` | doctor_availability | `endTime > startTime` | nothing |
+| `doctors_slot_duration_positive_chk` | doctors | `slotDurationMinutes > 0` | nothing (0 would loop slot generation) |
+| `doctors_experience_years_nonnegative_chk` | doctors | NULL or `>= 0` | nothing |
+| `doctors_consultation_fee_nonnegative_chk` | doctors | NULL or `>= 0` | nothing |
+| `appointments_time_format_chk` | appointments | start/end valid `HH:MM` | Zod `time` regex (API only) |
+| `appointments_time_order_chk` | appointments | `endTime > startTime` | slot generation (API only) |
+
+Design notes:
+
+- **Times stay `VARCHAR(5)`.** Changing them to `TIME` would change Prisma types and every API payload. Zero-padded `HH:MM` strings sort in chronological order, so comparing them as text is correct once the format CHECK holds.
+- **Considered and rejected:** "cancelled status ⇔ `cancelledAt IS NOT NULL`". The existing Jest fixture `dashboard.test.js` inserts a cancelled appointment without `cancelledAt`, so this constraint would break a passing test without a product decision.
+- **Considered and deferred:** an exclusion constraint against *overlapping* appointment intervals. The partial unique index only blocks identical `(doctorId, appointmentDate, startTime)` for active rows. Overlap prevention would need `btree_gist` and `TIME` ranges, so it is documented as a known limitation.
+
 ### Application-level only (not PostgreSQL CHECKs)
 
-These exist in Express/Zod/Prisma **application** code, or only as schema comments:
+These still live only in Express/Zod/Prisma **application** code:
 
 | Rule | Where it lives |
 |------|----------------|
 | Email format, password complexity | Zod in `auth.schemas.js` |
-| Appointment date `YYYY-MM-DD` and time `HH:MM` | Zod in `appointments.schemas.js` |
+| Appointment date `YYYY-MM-DD` | Zod in `appointments.schemas.js` (column type `DATE` already rejects invalid dates) |
 | Booking not in the past; slot must fall inside availability | `appointments.routes.js` / `dateTime.js` |
-| Status transitions (e.g. COMPLETED only from CONFIRMED) | `validateStatusTransition` in appointments routes |
+| Status transitions (e.g. COMPLETED only from CONFIRMED) | `validateStatusTransition` in appointments routes (the `sp_cancel_appointment` procedure applies the same rule for SQL callers) |
 | Patient/doctor/admin may only see their own rows | JWT + `roleGuard` + scoped Prisma queries |
-| Feedback rating 1–5 | Prisma comment only; no DB CHECK; feedback HTTP API is still a placeholder |
-| `dayOfWeek` 0–6 | Prisma comment only |
 | Duplicate email before insert | Application check **plus** unique index |
 
 ### Prisma vs SQL gap
@@ -340,4 +360,4 @@ The partial unique index is **present in SQL** and **absent from `schema.prisma`
 
 ## Execution status
 
-This document was written from the source files. `sql/01_ddl.sql` was later executed on PostgreSQL 15.15 on 2026-10-10 and the catalog was checked (10 tables, 5 enums, 10 FKs, 24 indexes, partial unique index predicate): see `results/01_ddl_run.txt`.
+This document was written from the source files. `sql/01_ddl.sql` was executed on PostgreSQL 15.15 and the catalog was checked: 10 tables, 5 enums, 10 FKs, 24 indexes, the partial unique index predicate, and the 9 CHECK constraints. See `results/01_ddl_run.txt` and `results/05_integrity_constraints_run.txt`. The Prisma migrations were also applied with `prisma migrate deploy` to a disposable database. `prisma migrate diff` reported no difference between the migrations and `schema.prisma`.

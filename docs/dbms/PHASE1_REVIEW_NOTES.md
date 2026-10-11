@@ -34,7 +34,7 @@ Environment: PostgreSQL 15.15 (Debian) in a disposable Docker container `medicor
 | Step | Result | Evidence |
 |------|--------|----------|
 | `01_ddl.sql` on an empty DB | Exit 0, no errors. 10 tables, 5 enums, 10 FKs, 24 indexes (10 PK + 5 unique + 8 non-unique + 1 partial). Partial index predicate excludes the three cancelled statuses | `results/01_ddl_run.txt` |
-| `02_dml.sql` run 1 | Exit 0. users 13, departments 6, patients 6, doctors 6, availability 10, appointments 15, feedback 5, queries 5, conversations 3, messages 6 | `results/02_dml_run1.txt` |
+| `02_dml.sql` run 1 | Exit 0. users 13, departments 6, patients 6, doctors 6, availability 10, appointments 15, feedback 5, queries 5, conversations 3, messages 6 | `results/02_dml_run.txt` |
 | `02_dml.sql` run 2 (idempotency) | Exit 0, identical row counts | `results/02_dml_run2.txt` |
 | Section B transaction | Inside the transaction: UPDATE 1 ×3, DELETE 1, changes visible. After ROLLBACK: feedback 601 isRead = false, appointment 510 = BOOKED, query 702 = OPEN, feedback 699 still present | `results/02_dml_run*.txt` |
 | `03_sql_queries.sql` | Exit 0, 47 result sets, none empty | `results/03_sql_queries_run.txt` |

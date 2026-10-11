@@ -1,9 +1,9 @@
--- MediCore DBMS Phase 1 execution evidence
--- Run (UTC): 2026-10-10T18:06:59Z
--- Database: medicore_dbms_test (disposable Docker container medicore_dbms_test, image postgres:15)
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-11T11:42:10Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p3b
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
--- psql flags: -v ON_ERROR_STOP=1 -X -e
--- File: sql/01_ddl.sql
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/01_ddl.sql
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION
@@ -32,7 +32,6 @@ CREATE TABLE "users" (
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ NOT NULL,
-
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE
@@ -48,7 +47,6 @@ CREATE TABLE "patients" (
     "bloodGroup" VARCHAR(5),
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ NOT NULL,
-
     CONSTRAINT "patients_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE
@@ -57,7 +55,6 @@ CREATE TABLE "departments" (
     "name" VARCHAR(100) NOT NULL,
     "description" TEXT,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT "departments_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE
@@ -77,7 +74,6 @@ CREATE TABLE "doctors" (
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ NOT NULL,
-
     CONSTRAINT "doctors_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE
@@ -88,7 +84,6 @@ CREATE TABLE "doctor_availability" (
     "startTime" VARCHAR(5) NOT NULL,
     "endTime" VARCHAR(5) NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
-
     CONSTRAINT "doctor_availability_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE
@@ -106,7 +101,6 @@ CREATE TABLE "appointments" (
     "cancelledAt" TIMESTAMPTZ,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ NOT NULL,
-
     CONSTRAINT "appointments_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE
@@ -118,7 +112,6 @@ CREATE TABLE "feedback" (
     "rating" SMALLINT,
     "isRead" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT "feedback_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE
@@ -132,7 +125,6 @@ CREATE TABLE "queries" (
     "respondedAt" TIMESTAMPTZ,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ NOT NULL,
-
     CONSTRAINT "queries_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE
@@ -143,7 +135,6 @@ CREATE TABLE "chat_conversations" (
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ NOT NULL,
-
     CONSTRAINT "chat_conversations_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE
@@ -154,7 +145,6 @@ CREATE TABLE "chat_messages" (
     "content" TEXT NOT NULL,
     "tokenCount" INTEGER,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
     CONSTRAINT "chat_messages_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE
@@ -245,46 +235,42 @@ WHERE "status" NOT IN (
   'CANCELLED_BY_ADMIN'
 );
 CREATE INDEX
+ALTER TABLE "feedback"
+  ADD CONSTRAINT "feedback_rating_range_chk"
+  CHECK ("rating" IS NULL OR "rating" BETWEEN 1 AND 5);
+ALTER TABLE
+ALTER TABLE "doctor_availability"
+  ADD CONSTRAINT "doctor_availability_day_of_week_chk"
+  CHECK ("dayOfWeek" BETWEEN 0 AND 6);
+ALTER TABLE
+ALTER TABLE "doctor_availability"
+  ADD CONSTRAINT "doctor_availability_time_format_chk"
+  CHECK ("startTime" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+     AND "endTime"   ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
+ALTER TABLE
+ALTER TABLE "doctor_availability"
+  ADD CONSTRAINT "doctor_availability_time_order_chk"
+  CHECK ("endTime" > "startTime");
+ALTER TABLE
+ALTER TABLE "doctors"
+  ADD CONSTRAINT "doctors_slot_duration_positive_chk"
+  CHECK ("slotDurationMinutes" > 0);
+ALTER TABLE
+ALTER TABLE "doctors"
+  ADD CONSTRAINT "doctors_experience_years_nonnegative_chk"
+  CHECK ("experienceYears" IS NULL OR "experienceYears" >= 0);
+ALTER TABLE
+ALTER TABLE "doctors"
+  ADD CONSTRAINT "doctors_consultation_fee_nonnegative_chk"
+  CHECK ("consultationFee" IS NULL OR "consultationFee" >= 0);
+ALTER TABLE
+ALTER TABLE "appointments"
+  ADD CONSTRAINT "appointments_time_format_chk"
+  CHECK ("startTime" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+     AND "endTime"   ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
+ALTER TABLE
+ALTER TABLE "appointments"
+  ADD CONSTRAINT "appointments_time_order_chk"
+  CHECK ("endTime" > "startTime");
+ALTER TABLE
 EXIT_CODE=0
-
--- Catalog verification
-                List of relations
- Schema |        Name         | Type  |  Owner   
---------+---------------------+-------+----------
- public | appointments        | table | postgres
- public | chat_conversations  | table | postgres
- public | chat_messages       | table | postgres
- public | departments         | table | postgres
- public | doctor_availability | table | postgres
- public | doctors             | table | postgres
- public | feedback            | table | postgres
- public | patients            | table | postgres
- public | queries             | table | postgres
- public | users               | table | postgres
-(10 rows)
-
-             List of data types
- Schema |        Name         | Description 
---------+---------------------+-------------
- public | "AppointmentStatus" | 
- public | "Gender"            | 
- public | "MessageRole"       | 
- public | "QueryStatus"       | 
- public | "Role"              | 
-(5 rows)
-
- fk_count 
-----------
-       10
-(1 row)
-
- index_count 
--------------
-          24
-(1 row)
-
-                                                                                                                                                   indexdef                                                                                                                                                   
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX appointments_active_doctor_slot_unique ON public.appointments USING btree ("doctorId", "appointmentDate", "startTime") WHERE (status <> ALL (ARRAY['CANCELLED_BY_PATIENT'::"AppointmentStatus", 'CANCELLED_BY_DOCTOR'::"AppointmentStatus", 'CANCELLED_BY_ADMIN'::"AppointmentStatus"]))
-(1 row)
-
