@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-11T12:01:37Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p7
+-- Run (UTC): 2026-10-11T12:04:45Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p8b
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/06_views.sql
@@ -235,12 +235,6 @@ WHERE u."isActive" = TRUE;
 CREATE VIEW
 -- Plain view: peek() may also report the hidden doctor (Gupta)
 SELECT last_name FROM directory_plain WHERE pg_temp.peek(last_name) ORDER BY last_name;
-NOTICE:  peek() saw doctor: Sharma
-NOTICE:  peek() saw doctor: Kapoor
-NOTICE:  peek() saw doctor: Mehta
-NOTICE:  peek() saw doctor: Singh
-NOTICE:  peek() saw doctor: Gupta
-NOTICE:  peek() saw doctor: Rao
  last_name 
 -----------
  Kapoor
@@ -252,6 +246,12 @@ NOTICE:  peek() saw doctor: Rao
 
 -- security_barrier view: peek() only sees rows that passed the view filter
 SELECT last_name FROM directory_barrier WHERE pg_temp.peek(last_name) ORDER BY last_name;
+NOTICE:  peek() saw doctor: Sharma
+NOTICE:  peek() saw doctor: Kapoor
+NOTICE:  peek() saw doctor: Mehta
+NOTICE:  peek() saw doctor: Singh
+NOTICE:  peek() saw doctor: Gupta
+NOTICE:  peek() saw doctor: Rao
 NOTICE:  peek() saw doctor: Sharma
 NOTICE:  peek() saw doctor: Kapoor
 NOTICE:  peek() saw doctor: Mehta

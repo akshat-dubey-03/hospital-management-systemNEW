@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-11T12:01:39Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p7
+-- Run (UTC): 2026-10-11T12:04:47Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p8b
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/08_triggers.sql
@@ -117,10 +117,10 @@ WHERE "id" IN ('00000000-0000-4000-a000-000000000702', '00000000-0000-4000-a000-
 ORDER BY "subject";
                subject               |  status  |             adminResponse              |          respondedAt          | responded_now 
 -------------------------------------+----------+----------------------------------------+-------------------------------+---------------
- How do I reschedule an appointment? | RESOLVED | Edited answer.                         | 2026-10-11 12:01:40.390402+00 | t
+ How do I reschedule an appointment? | RESOLVED | Edited answer.                         | 2026-10-11 12:04:48.453664+00 | t
  Invoice copy                        | CLOSED   | Invoice copy sent to registered email. | 2026-09-20 12:00:00+00        | f
  Request for visit notes             | RESOLVED |                                        |                               | 
- Saturday availability               | OPEN     | Weekday slots only.                    | 2026-10-11 12:01:40.390402+00 | t
+ Saturday availability               | OPEN     | Weekday slots only.                    | 2026-10-11 12:04:48.453664+00 | t
  T-A1                                | OPEN     |                                        |                               | 
 (5 rows)
 
@@ -185,11 +185,11 @@ EXCEPTION WHEN check_violation THEN
   RAISE NOTICE 'PASS invalid update rejected, audit rows now: %',
     (SELECT COUNT(*) FROM "appointment_status_audit");
 END $$;
-NOTICE:  PASS invalid update rejected, audit rows now: 0
 DO
 SELECT (SELECT "status" FROM "appointments" WHERE "id" = '00000000-0000-4000-a000-000000000510') AS appt_510,
        (SELECT "respondedAt" FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000701') AS query_701_responded_at,
        (SELECT COUNT(*) FROM "appointment_status_audit") AS audit_rows;
+NOTICE:  PASS invalid update rejected, audit rows now: 0
  appt_510 | query_701_responded_at | audit_rows 
 ----------+------------------------+------------
  BOOKED   | 2026-09-12 10:00:00+00 |          0
