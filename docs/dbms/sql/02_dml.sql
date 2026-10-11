@@ -1,0 +1,509 @@
+-- =============================================================================
+-- MediCore HMS — Demonstration DML
+-- =============================================================================
+-- Prerequisite: 01_ddl.sql applied on an EMPTY disposable database.
+-- Do not run against the Prisma application database.
+--
+-- Section A: idempotent setup INSERTs (ON CONFLICT on primary keys).
+-- Section B: UPDATE / DELETE demonstrations inside a transaction that ROLLS BACK.
+--
+-- Identifiers are fixed UUIDs in the 00000000-0000-4000-a000-* namespace so
+-- queries in 03/04 can reference them. Emails use the @medicore.dbms.example
+-- domain so they do not collide with application seed accounts.
+--
+-- passwordHash values are inert placeholders, not login credentials.
+-- Dates are fixed (not CURRENT_DATE) so query results are stable.
+--
+-- Execution of this file against PostgreSQL has not been verified in this phase.
+-- =============================================================================
+
+-- =============================================================================
+-- SECTION A — Demonstration data setup (safe to re-run)
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- A.1 users
+-- -----------------------------------------------------------------------------
+
+INSERT INTO "users" (
+  "id", "email", "passwordHash", "role", "isActive", "createdAt", "updatedAt"
+) VALUES
+  ('00000000-0000-4000-a000-000000000001', 'demo.admin@medicore.dbms.example',
+   'demo-hash-not-a-password', 'ADMIN', TRUE,
+   TIMESTAMPTZ '2026-01-02 08:00:00+00', TIMESTAMPTZ '2026-01-02 08:00:00+00'),
+  ('00000000-0000-4000-a000-000000000010', 'demo.dr.sharma@medicore.dbms.example',
+   'demo-hash-not-a-password', 'DOCTOR', TRUE,
+   TIMESTAMPTZ '2026-01-03 08:00:00+00', TIMESTAMPTZ '2026-01-03 08:00:00+00'),
+  ('00000000-0000-4000-a000-000000000011', 'demo.dr.kapoor@medicore.dbms.example',
+   'demo-hash-not-a-password', 'DOCTOR', TRUE,
+   TIMESTAMPTZ '2026-01-03 08:10:00+00', TIMESTAMPTZ '2026-01-03 08:10:00+00'),
+  ('00000000-0000-4000-a000-000000000012', 'demo.dr.mehta@medicore.dbms.example',
+   'demo-hash-not-a-password', 'DOCTOR', TRUE,
+   TIMESTAMPTZ '2026-01-03 08:20:00+00', TIMESTAMPTZ '2026-01-03 08:20:00+00'),
+  ('00000000-0000-4000-a000-000000000013', 'demo.dr.singh@medicore.dbms.example',
+   'demo-hash-not-a-password', 'DOCTOR', TRUE,
+   TIMESTAMPTZ '2026-01-03 08:30:00+00', TIMESTAMPTZ '2026-01-03 08:30:00+00'),
+  ('00000000-0000-4000-a000-000000000014', 'demo.dr.gupta@medicore.dbms.example',
+   'demo-hash-not-a-password', 'DOCTOR', FALSE,
+   TIMESTAMPTZ '2026-01-03 08:40:00+00', TIMESTAMPTZ '2026-06-01 09:00:00+00'),
+  ('00000000-0000-4000-a000-000000000015', 'demo.dr.iyer@medicore.dbms.example',
+   'demo-hash-not-a-password', 'DOCTOR', TRUE,
+   TIMESTAMPTZ '2026-01-03 08:50:00+00', TIMESTAMPTZ '2026-01-03 08:50:00+00'),
+  ('00000000-0000-4000-a000-000000000020', 'demo.patient.kumar@medicore.dbms.example',
+   'demo-hash-not-a-password', 'PATIENT', TRUE,
+   TIMESTAMPTZ '2026-01-04 09:00:00+00', TIMESTAMPTZ '2026-01-04 09:00:00+00'),
+  ('00000000-0000-4000-a000-000000000021', 'demo.patient.patel@medicore.dbms.example',
+   'demo-hash-not-a-password', 'PATIENT', TRUE,
+   TIMESTAMPTZ '2026-01-04 09:10:00+00', TIMESTAMPTZ '2026-01-04 09:10:00+00'),
+  ('00000000-0000-4000-a000-000000000022', 'demo.patient.joshi@medicore.dbms.example',
+   'demo-hash-not-a-password', 'PATIENT', TRUE,
+   TIMESTAMPTZ '2026-01-04 09:20:00+00', TIMESTAMPTZ '2026-01-04 09:20:00+00'),
+  ('00000000-0000-4000-a000-000000000023', 'demo.patient.reddy@medicore.dbms.example',
+   'demo-hash-not-a-password', 'PATIENT', TRUE,
+   TIMESTAMPTZ '2026-01-04 09:30:00+00', TIMESTAMPTZ '2026-01-04 09:30:00+00'),
+  ('00000000-0000-4000-a000-000000000024', 'demo.patient.nair@medicore.dbms.example',
+   'demo-hash-not-a-password', 'PATIENT', TRUE,
+   TIMESTAMPTZ '2026-01-04 09:40:00+00', TIMESTAMPTZ '2026-01-04 09:40:00+00'),
+  ('00000000-0000-4000-a000-000000000025', 'demo.patient.incomplete@medicore.dbms.example',
+   'demo-hash-not-a-password', 'PATIENT', TRUE,
+   TIMESTAMPTZ '2026-01-04 09:50:00+00', TIMESTAMPTZ '2026-01-04 09:50:00+00')
+ON CONFLICT ("id") DO UPDATE SET
+  "email" = EXCLUDED."email",
+  "passwordHash" = EXCLUDED."passwordHash",
+  "role" = EXCLUDED."role",
+  "isActive" = EXCLUDED."isActive",
+  "updatedAt" = EXCLUDED."updatedAt";
+
+-- -----------------------------------------------------------------------------
+-- A.2 departments
+-- Oncology is intentionally left without doctors (LEFT JOIN / EXCEPT examples).
+-- -----------------------------------------------------------------------------
+
+INSERT INTO "departments" ("id", "name", "description", "createdAt") VALUES
+  ('00000000-0000-4000-a000-000000000101', 'Cardiology',
+   'Heart and vascular conditions.', TIMESTAMPTZ '2026-01-02 07:00:00+00'),
+  ('00000000-0000-4000-a000-000000000102', 'Neurology',
+   'Brain, spine, and peripheral nerve disorders.', TIMESTAMPTZ '2026-01-02 07:00:00+00'),
+  ('00000000-0000-4000-a000-000000000103', 'Orthopedics',
+   'Musculoskeletal injuries and joint care.', TIMESTAMPTZ '2026-01-02 07:00:00+00'),
+  ('00000000-0000-4000-a000-000000000104', 'Pediatrics',
+   'Care of infants, children, and adolescents.', TIMESTAMPTZ '2026-01-02 07:00:00+00'),
+  ('00000000-0000-4000-a000-000000000105', 'Dermatology',
+   'Skin, hair, and nail conditions.', TIMESTAMPTZ '2026-01-02 07:00:00+00'),
+  ('00000000-0000-4000-a000-000000000106', 'Oncology',
+   'Demonstration department with no assigned doctors.', TIMESTAMPTZ '2026-01-02 07:00:00+00')
+ON CONFLICT ("id") DO UPDATE SET
+  "name" = EXCLUDED."name",
+  "description" = EXCLUDED."description";
+
+-- -----------------------------------------------------------------------------
+-- A.3 patients
+-- -----------------------------------------------------------------------------
+
+INSERT INTO "patients" (
+  "id", "userId", "firstName", "lastName", "dateOfBirth", "gender",
+  "phone", "address", "bloodGroup", "createdAt", "updatedAt"
+) VALUES
+  ('00000000-0000-4000-a000-000000000201', '00000000-0000-4000-a000-000000000020',
+   'Rahul', 'Kumar', DATE '1990-05-15', 'MALE', '9876543210',
+   '12 MG Road, Bengaluru', 'O+',
+   TIMESTAMPTZ '2026-01-04 09:00:00+00', TIMESTAMPTZ '2026-01-04 09:00:00+00'),
+  ('00000000-0000-4000-a000-000000000202', '00000000-0000-4000-a000-000000000021',
+   'Sneha', 'Patel', DATE '1995-08-22', 'FEMALE', '9876543211',
+   '44 CG Road, Ahmedabad', 'A+',
+   TIMESTAMPTZ '2026-01-04 09:10:00+00', TIMESTAMPTZ '2026-01-04 09:10:00+00'),
+  ('00000000-0000-4000-a000-000000000203', '00000000-0000-4000-a000-000000000022',
+   'Amit', 'Joshi', DATE '1985-03-10', 'MALE', '9876543212',
+   NULL, 'B+',
+   TIMESTAMPTZ '2026-01-04 09:20:00+00', TIMESTAMPTZ '2026-01-04 09:20:00+00'),
+  ('00000000-0000-4000-a000-000000000204', '00000000-0000-4000-a000-000000000023',
+   'Kavya', 'Reddy', DATE '2000-11-30', 'FEMALE', '9876543213',
+   '8 Banjara Hills, Hyderabad', 'AB+',
+   TIMESTAMPTZ '2026-01-04 09:30:00+00', TIMESTAMPTZ '2026-01-04 09:30:00+00'),
+  ('00000000-0000-4000-a000-000000000205', '00000000-0000-4000-a000-000000000024',
+   'Suresh', 'Nair', DATE '1978-07-04', 'MALE', NULL,
+   '21 Marine Drive, Kochi', 'O-',
+   TIMESTAMPTZ '2026-01-04 09:40:00+00', TIMESTAMPTZ '2026-01-04 09:40:00+00'),
+  ('00000000-0000-4000-a000-000000000206', '00000000-0000-4000-a000-000000000025',
+   'Meera', 'Iyer', NULL, 'PREFER_NOT_TO_SAY', '9876543215',
+   NULL, NULL,
+   TIMESTAMPTZ '2026-01-04 09:50:00+00', TIMESTAMPTZ '2026-01-04 09:50:00+00')
+ON CONFLICT ("id") DO UPDATE SET
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "dateOfBirth" = EXCLUDED."dateOfBirth",
+  "gender" = EXCLUDED."gender",
+  "phone" = EXCLUDED."phone",
+  "address" = EXCLUDED."address",
+  "bloodGroup" = EXCLUDED."bloodGroup",
+  "updatedAt" = EXCLUDED."updatedAt";
+
+-- -----------------------------------------------------------------------------
+-- A.4 doctors
+-- -----------------------------------------------------------------------------
+
+INSERT INTO "doctors" (
+  "id", "userId", "departmentId", "firstName", "lastName",
+  "specialization", "qualification", "experienceYears", "bio", "phone",
+  "consultationFee", "slotDurationMinutes", "isActive", "createdAt", "updatedAt"
+) VALUES
+  ('00000000-0000-4000-a000-000000000301', '00000000-0000-4000-a000-000000000010',
+   '00000000-0000-4000-a000-000000000101', 'Arjun', 'Sharma',
+   'Interventional Cardiology', 'MBBS, MD, DM (Cardiology)', 14,
+   'Senior cardiologist focusing on angioplasty.', '9800000001',
+   800.00, 30, TRUE,
+   TIMESTAMPTZ '2026-01-03 08:00:00+00', TIMESTAMPTZ '2026-01-03 08:00:00+00'),
+  ('00000000-0000-4000-a000-000000000302', '00000000-0000-4000-a000-000000000011',
+   '00000000-0000-4000-a000-000000000102', 'Priya', 'Kapoor',
+   'Stroke Medicine', 'MBBS, MD, DM (Neurology)', 11,
+   'Neurologist with stroke and epilepsy interest.', '9800000002',
+   700.00, 30, TRUE,
+   TIMESTAMPTZ '2026-01-03 08:10:00+00', TIMESTAMPTZ '2026-01-03 08:10:00+00'),
+  ('00000000-0000-4000-a000-000000000303', '00000000-0000-4000-a000-000000000012',
+   '00000000-0000-4000-a000-000000000103', 'Rohan', 'Mehta',
+   'Joint Replacement', 'MBBS, MS (Orthopaedics)', 9,
+   'Orthopedic surgeon, sports injuries.', '9800000003',
+   750.00, 30, TRUE,
+   TIMESTAMPTZ '2026-01-03 08:20:00+00', TIMESTAMPTZ '2026-01-03 08:20:00+00'),
+  ('00000000-0000-4000-a000-000000000304', '00000000-0000-4000-a000-000000000013',
+   '00000000-0000-4000-a000-000000000104', 'Anjali', 'Singh',
+   'General Pediatrics', 'MBBS, MD (Pediatrics)', 8,
+   'Pediatric and neonatal care.', '9800000004',
+   600.00, 20, TRUE,
+   TIMESTAMPTZ '2026-01-03 08:30:00+00', TIMESTAMPTZ '2026-01-03 08:30:00+00'),
+  ('00000000-0000-4000-a000-000000000305', '00000000-0000-4000-a000-000000000014',
+   '00000000-0000-4000-a000-000000000105', 'Neha', 'Gupta',
+   'Cosmetic Dermatology', 'MBBS, MD (Dermatology)', 7,
+   'Inactive demonstration doctor.', '9800000005',
+   650.00, 30, FALSE,
+   TIMESTAMPTZ '2026-01-03 08:40:00+00', TIMESTAMPTZ '2026-06-01 09:00:00+00'),
+  ('00000000-0000-4000-a000-000000000306', '00000000-0000-4000-a000-000000000015',
+   '00000000-0000-4000-a000-000000000105', 'Meera', 'Iyer',
+   'General Dermatology', 'MBBS, MD (Dermatology)', 12,
+   'Active demonstration doctor with availability but no upcoming appointments.', '9800000006',
+   680.00, 30, TRUE,
+   TIMESTAMPTZ '2026-01-03 08:50:00+00', TIMESTAMPTZ '2026-01-03 08:50:00+00')
+ON CONFLICT ("id") DO UPDATE SET
+  "departmentId" = EXCLUDED."departmentId",
+  "firstName" = EXCLUDED."firstName",
+  "lastName" = EXCLUDED."lastName",
+  "specialization" = EXCLUDED."specialization",
+  "qualification" = EXCLUDED."qualification",
+  "experienceYears" = EXCLUDED."experienceYears",
+  "bio" = EXCLUDED."bio",
+  "phone" = EXCLUDED."phone",
+  "consultationFee" = EXCLUDED."consultationFee",
+  "slotDurationMinutes" = EXCLUDED."slotDurationMinutes",
+  "isActive" = EXCLUDED."isActive",
+  "updatedAt" = EXCLUDED."updatedAt";
+
+-- -----------------------------------------------------------------------------
+-- A.5 doctor_availability  (dayOfWeek: 0=Monday ... 6=Sunday)
+-- -----------------------------------------------------------------------------
+
+INSERT INTO "doctor_availability" (
+  "id", "doctorId", "dayOfWeek", "startTime", "endTime", "isActive"
+) VALUES
+  ('00000000-0000-4000-a000-000000000401', '00000000-0000-4000-a000-000000000301', 0, '09:00', '13:00', TRUE),
+  ('00000000-0000-4000-a000-000000000402', '00000000-0000-4000-a000-000000000301', 0, '14:00', '17:00', TRUE),
+  ('00000000-0000-4000-a000-000000000403', '00000000-0000-4000-a000-000000000301', 3, '09:00', '13:00', TRUE),
+  ('00000000-0000-4000-a000-000000000404', '00000000-0000-4000-a000-000000000302', 1, '09:00', '13:00', TRUE),
+  ('00000000-0000-4000-a000-000000000405', '00000000-0000-4000-a000-000000000302', 1, '14:00', '17:00', TRUE),
+  ('00000000-0000-4000-a000-000000000406', '00000000-0000-4000-a000-000000000303', 2, '09:00', '13:00', TRUE),
+  ('00000000-0000-4000-a000-000000000407', '00000000-0000-4000-a000-000000000303', 4, '14:00', '17:00', TRUE),
+  ('00000000-0000-4000-a000-000000000408', '00000000-0000-4000-a000-000000000304', 0, '09:00', '13:00', TRUE),
+  ('00000000-0000-4000-a000-000000000409', '00000000-0000-4000-a000-000000000305', 2, '10:00', '14:00', FALSE),
+  ('00000000-0000-4000-a000-000000000410', '00000000-0000-4000-a000-000000000306', 4, '10:00', '14:00', TRUE)
+ON CONFLICT ("id") DO UPDATE SET
+  "endTime" = EXCLUDED."endTime",
+  "isActive" = EXCLUDED."isActive";
+
+-- -----------------------------------------------------------------------------
+-- A.6 appointments
+-- Mix of statuses, departments, and patients for joins / aggregates / windows.
+-- -----------------------------------------------------------------------------
+
+INSERT INTO "appointments" (
+  "id", "patientId", "doctorId", "appointmentDate", "startTime", "endTime",
+  "status", "reasonForVisit", "notes", "cancellationReason", "cancelledAt",
+  "createdAt", "updatedAt"
+) VALUES
+  ('00000000-0000-4000-a000-000000000501',
+   '00000000-0000-4000-a000-000000000201', '00000000-0000-4000-a000-000000000301',
+   DATE '2026-08-12', '09:30', '10:00', 'COMPLETED',
+   'Follow-up after ECG', 'ECG normal. Lifestyle advice given.', NULL, NULL,
+   TIMESTAMPTZ '2026-08-01 10:00:00+00', TIMESTAMPTZ '2026-08-12 10:05:00+00'),
+  ('00000000-0000-4000-a000-000000000502',
+   '00000000-0000-4000-a000-000000000202', '00000000-0000-4000-a000-000000000302',
+   DATE '2026-08-18', '10:00', '10:30', 'COMPLETED',
+   'Recurring headaches', 'Migraine likely. Keep headache diary.', NULL, NULL,
+   TIMESTAMPTZ '2026-08-05 11:00:00+00', TIMESTAMPTZ '2026-08-18 10:40:00+00'),
+  ('00000000-0000-4000-a000-000000000503',
+   '00000000-0000-4000-a000-000000000205', '00000000-0000-4000-a000-000000000303',
+   DATE '2026-08-21', '14:00', '14:30', 'COMPLETED',
+   'Back pain', 'Lumbar strain. Physiotherapy recommended.', NULL, NULL,
+   TIMESTAMPTZ '2026-08-10 09:00:00+00', TIMESTAMPTZ '2026-08-21 14:35:00+00'),
+  ('00000000-0000-4000-a000-000000000504',
+   '00000000-0000-4000-a000-000000000201', '00000000-0000-4000-a000-000000000301',
+   DATE '2026-09-04', '10:00', '10:30', 'COMPLETED',
+   'Chest discomfort on exertion', 'Treadmill test planned.', NULL, NULL,
+   TIMESTAMPTZ '2026-08-20 08:00:00+00', TIMESTAMPTZ '2026-09-04 10:35:00+00'),
+  ('00000000-0000-4000-a000-000000000505',
+   '00000000-0000-4000-a000-000000000203', '00000000-0000-4000-a000-000000000302',
+   DATE '2026-09-10', '10:00', '10:30', 'CANCELLED_BY_PATIENT',
+   'Headache evaluation', NULL, 'Personal emergency',
+   TIMESTAMPTZ '2026-09-09 18:00:00+00',
+   TIMESTAMPTZ '2026-09-01 12:00:00+00', TIMESTAMPTZ '2026-09-09 18:00:00+00'),
+  ('00000000-0000-4000-a000-000000000506',
+   '00000000-0000-4000-a000-000000000204', '00000000-0000-4000-a000-000000000301',
+   DATE '2026-09-15', '09:00', '09:30', 'CANCELLED_BY_DOCTOR',
+   'Palpitations', NULL, 'Doctor attending a conference',
+   TIMESTAMPTZ '2026-09-14 07:00:00+00',
+   TIMESTAMPTZ '2026-09-02 12:00:00+00', TIMESTAMPTZ '2026-09-14 07:00:00+00'),
+  ('00000000-0000-4000-a000-000000000507',
+   '00000000-0000-4000-a000-000000000202', '00000000-0000-4000-a000-000000000304',
+   DATE '2026-09-20', '09:00', '09:20', 'CANCELLED_BY_ADMIN',
+   'Child wellness visit booked in error', NULL, 'Duplicate booking removed by admin',
+   TIMESTAMPTZ '2026-09-18 11:00:00+00',
+   TIMESTAMPTZ '2026-09-12 09:00:00+00', TIMESTAMPTZ '2026-09-18 11:00:00+00'),
+  ('00000000-0000-4000-a000-000000000508',
+   '00000000-0000-4000-a000-000000000203', '00000000-0000-4000-a000-000000000303',
+   DATE '2026-10-08', '09:00', '09:30', 'CONFIRMED',
+   'Knee pain after sports injury', NULL, NULL, NULL,
+   TIMESTAMPTZ '2026-09-25 10:00:00+00', TIMESTAMPTZ '2026-10-01 09:00:00+00'),
+  ('00000000-0000-4000-a000-000000000509',
+   '00000000-0000-4000-a000-000000000204', '00000000-0000-4000-a000-000000000304',
+   DATE '2026-10-12', '09:20', '09:40', 'CONFIRMED',
+   'Routine child health checkup', NULL, NULL, NULL,
+   TIMESTAMPTZ '2026-09-28 14:00:00+00', TIMESTAMPTZ '2026-10-02 08:00:00+00'),
+  ('00000000-0000-4000-a000-000000000510',
+   '00000000-0000-4000-a000-000000000201', '00000000-0000-4000-a000-000000000301',
+   DATE '2026-10-15', '10:00', '10:30', 'BOOKED',
+   'Chest discomfort and shortness of breath', NULL, NULL, NULL,
+   TIMESTAMPTZ '2026-10-01 09:00:00+00', TIMESTAMPTZ '2026-10-01 09:00:00+00'),
+  ('00000000-0000-4000-a000-000000000511',
+   '00000000-0000-4000-a000-000000000202', '00000000-0000-4000-a000-000000000302',
+   DATE '2026-10-20', '11:00', '11:30', 'BOOKED',
+   'Follow-up for headaches', NULL, NULL, NULL,
+   TIMESTAMPTZ '2026-10-02 11:00:00+00', TIMESTAMPTZ '2026-10-02 11:00:00+00'),
+  ('00000000-0000-4000-a000-000000000512',
+   '00000000-0000-4000-a000-000000000205', '00000000-0000-4000-a000-000000000301',
+   DATE '2026-10-22', '14:00', '14:30', 'BOOKED',
+   'Hypertension review', NULL, NULL, NULL,
+   TIMESTAMPTZ '2026-10-03 08:30:00+00', TIMESTAMPTZ '2026-10-03 08:30:00+00'),
+  ('00000000-0000-4000-a000-000000000513',
+   '00000000-0000-4000-a000-000000000201', '00000000-0000-4000-a000-000000000303',
+   DATE '2026-11-05', '14:00', '14:30', 'BOOKED',
+   'Shoulder stiffness', NULL, NULL, NULL,
+   TIMESTAMPTZ '2026-10-05 16:00:00+00', TIMESTAMPTZ '2026-10-05 16:00:00+00'),
+  ('00000000-0000-4000-a000-000000000514',
+   '00000000-0000-4000-a000-000000000206', '00000000-0000-4000-a000-000000000304',
+   DATE '2026-11-10', '10:00', '10:20', 'BOOKED',
+   'Vaccination advice', NULL, NULL, NULL,
+   TIMESTAMPTZ '2026-10-06 10:00:00+00', TIMESTAMPTZ '2026-10-06 10:00:00+00'),
+  ('00000000-0000-4000-a000-000000000515',
+   '00000000-0000-4000-a000-000000000202', '00000000-0000-4000-a000-000000000301',
+   DATE '2026-10-15', '10:30', '11:00', 'CONFIRMED',
+   'Cardiology follow-up', NULL, NULL, NULL,
+   TIMESTAMPTZ '2026-10-03 09:00:00+00', TIMESTAMPTZ '2026-10-03 09:00:00+00')
+ON CONFLICT ("id") DO UPDATE SET
+  "status" = EXCLUDED."status",
+  "reasonForVisit" = EXCLUDED."reasonForVisit",
+  "notes" = EXCLUDED."notes",
+  "cancellationReason" = EXCLUDED."cancellationReason",
+  "cancelledAt" = EXCLUDED."cancelledAt",
+  "updatedAt" = EXCLUDED."updatedAt";
+
+-- -----------------------------------------------------------------------------
+-- A.7 feedback
+-- -----------------------------------------------------------------------------
+
+INSERT INTO "feedback" (
+  "id", "patientId", "subject", "message", "rating", "isRead", "createdAt"
+) VALUES
+  ('00000000-0000-4000-a000-000000000601', '00000000-0000-4000-a000-000000000201',
+   'Excellent care from Dr Sharma',
+   'The cardiology visit was thorough and the booking process was clear.',
+   5, FALSE, TIMESTAMPTZ '2026-08-13 12:00:00+00'),
+  ('00000000-0000-4000-a000-000000000602', '00000000-0000-4000-a000-000000000202',
+   'Good experience overall',
+   'Dr Kapoor was patient. Waiting time was longer than expected.',
+   4, TRUE, TIMESTAMPTZ '2026-08-19 09:00:00+00'),
+  ('00000000-0000-4000-a000-000000000603', '00000000-0000-4000-a000-000000000205',
+   'Suggestion for reminders',
+   'SMS reminders for appointments would help.',
+   3, FALSE, TIMESTAMPTZ '2026-08-22 18:00:00+00'),
+  ('00000000-0000-4000-a000-000000000604', '00000000-0000-4000-a000-000000000203',
+   'Portal usability',
+   'Could not find a direct reschedule option.',
+   NULL, FALSE, TIMESTAMPTZ '2026-09-11 15:00:00+00')
+ON CONFLICT ("id") DO UPDATE SET
+  "subject" = EXCLUDED."subject",
+  "message" = EXCLUDED."message",
+  "rating" = EXCLUDED."rating",
+  "isRead" = EXCLUDED."isRead";
+
+-- -----------------------------------------------------------------------------
+-- A.8 queries (support tickets)
+-- -----------------------------------------------------------------------------
+
+INSERT INTO "queries" (
+  "id", "patientId", "subject", "message", "status",
+  "adminResponse", "respondedAt", "createdAt", "updatedAt"
+) VALUES
+  ('00000000-0000-4000-a000-000000000701', '00000000-0000-4000-a000-000000000203',
+   'How do I reschedule an appointment?',
+   'The portal only shows cancel. Can I keep a similar slot?',
+   'RESOLVED',
+   'Cancel and book a new slot. Direct reschedule is not yet available.',
+   TIMESTAMPTZ '2026-09-12 10:00:00+00',
+   TIMESTAMPTZ '2026-09-11 16:00:00+00', TIMESTAMPTZ '2026-09-12 10:00:00+00'),
+  ('00000000-0000-4000-a000-000000000702', '00000000-0000-4000-a000-000000000204',
+   'Saturday availability',
+   'Does Dr Singh offer Saturday morning slots?',
+   'OPEN', NULL, NULL,
+   TIMESTAMPTZ '2026-10-01 11:00:00+00', TIMESTAMPTZ '2026-10-01 11:00:00+00'),
+  ('00000000-0000-4000-a000-000000000703', '00000000-0000-4000-a000-000000000202',
+   'Request for visit notes',
+   'Need previous appointment notes for a visa application.',
+   'IN_PROGRESS', NULL, NULL,
+   TIMESTAMPTZ '2026-10-02 13:00:00+00', TIMESTAMPTZ '2026-10-04 09:00:00+00'),
+  ('00000000-0000-4000-a000-000000000704', '00000000-0000-4000-a000-000000000201',
+   'Invoice copy',
+   'Please close this after the copy is emailed.',
+   'CLOSED',
+   'Invoice copy sent to registered email.',
+   TIMESTAMPTZ '2026-09-20 12:00:00+00',
+   TIMESTAMPTZ '2026-09-18 12:00:00+00', TIMESTAMPTZ '2026-09-20 12:00:00+00'),
+  ('00000000-0000-4000-a000-000000000705', '00000000-0000-4000-a000-000000000201',
+   'Cardiology follow-up question',
+   'Could you confirm whether my next appointment requires fasting?',
+   'OPEN', NULL, NULL,
+   TIMESTAMPTZ '2026-10-03 12:00:00+00', TIMESTAMPTZ '2026-10-03 12:00:00+00')
+ON CONFLICT ("id") DO UPDATE SET
+  "status" = EXCLUDED."status",
+  "adminResponse" = EXCLUDED."adminResponse",
+  "respondedAt" = EXCLUDED."respondedAt",
+  "updatedAt" = EXCLUDED."updatedAt";
+
+-- -----------------------------------------------------------------------------
+-- A.9 chat conversations and messages
+-- -----------------------------------------------------------------------------
+
+INSERT INTO "chat_conversations" (
+  "id", "patientId", "title", "isActive", "createdAt", "updatedAt"
+) VALUES
+  ('00000000-0000-4000-a000-000000000801', '00000000-0000-4000-a000-000000000201',
+   'Appointment booking help', TRUE,
+   TIMESTAMPTZ '2026-09-01 10:00:00+00', TIMESTAMPTZ '2026-09-01 10:12:00+00'),
+  ('00000000-0000-4000-a000-000000000802', '00000000-0000-4000-a000-000000000202',
+   'Preparation for neurology visit', TRUE,
+   TIMESTAMPTZ '2026-09-02 11:00:00+00', TIMESTAMPTZ '2026-09-02 11:08:00+00'),
+  ('00000000-0000-4000-a000-000000000803', '00000000-0000-4000-a000-000000000206',
+   'Abandoned draft', FALSE,
+   TIMESTAMPTZ '2026-09-03 08:00:00+00', TIMESTAMPTZ '2026-09-03 08:05:00+00')
+ON CONFLICT ("id") DO UPDATE SET
+  "title" = EXCLUDED."title",
+  "isActive" = EXCLUDED."isActive",
+  "updatedAt" = EXCLUDED."updatedAt";
+
+INSERT INTO "chat_messages" (
+  "id", "conversationId", "role", "content", "tokenCount", "createdAt"
+) VALUES
+  ('00000000-0000-4000-a000-000000000901', '00000000-0000-4000-a000-000000000801',
+   'USER', 'How do I book an appointment with a cardiologist?', 18,
+   TIMESTAMPTZ '2026-09-01 10:00:00+00'),
+  ('00000000-0000-4000-a000-000000000902', '00000000-0000-4000-a000-000000000801',
+   'ASSISTANT', 'Open Find Doctors, filter by Cardiology, then pick an available slot.', 42,
+   TIMESTAMPTZ '2026-09-01 10:00:20+00'),
+  ('00000000-0000-4000-a000-000000000903', '00000000-0000-4000-a000-000000000801',
+   'USER', 'What should I bring to the first visit?', 12,
+   TIMESTAMPTZ '2026-09-01 10:05:00+00'),
+  ('00000000-0000-4000-a000-000000000904', '00000000-0000-4000-a000-000000000801',
+   'ASSISTANT', 'Bring prior reports and a medication list. This assistant is not a clinician.', 36,
+   TIMESTAMPTZ '2026-09-01 10:05:30+00'),
+  ('00000000-0000-4000-a000-000000000905', '00000000-0000-4000-a000-000000000802',
+   'USER', 'Should I stop my headache medicines before the visit?', 16,
+   TIMESTAMPTZ '2026-09-02 11:00:00+00'),
+  ('00000000-0000-4000-a000-000000000906', '00000000-0000-4000-a000-000000000802',
+   'ASSISTANT', 'Do not change medicines unless your doctor advises it.', 22,
+   TIMESTAMPTZ '2026-09-02 11:00:15+00')
+ON CONFLICT ("id") DO UPDATE SET
+  "content" = EXCLUDED."content",
+  "tokenCount" = EXCLUDED."tokenCount";
+
+-- Isolated row used only by the rolled-back DELETE demonstration below.
+INSERT INTO "feedback" (
+  "id", "patientId", "subject", "message", "rating", "isRead", "createdAt"
+) VALUES (
+  '00000000-0000-4000-a000-000000000699',
+  '00000000-0000-4000-a000-000000000206',
+  'TEMPORARY DML DEMO ROW',
+  'Exists so Section B can DELETE a dedicated demonstration row, not application data.',
+  1,
+  FALSE,
+  TIMESTAMPTZ '2026-10-01 00:00:00+00'
+)
+ON CONFLICT ("id") DO UPDATE SET
+  "subject" = EXCLUDED."subject",
+  "message" = EXCLUDED."message";
+
+-- =============================================================================
+-- SECTION B — UPDATE and DELETE demonstrations (transactional; rolls back)
+-- =============================================================================
+-- These statements exist to show DML syntax and constraint behaviour.
+-- They MUST NOT silently destroy the Section A dataset.
+--
+-- Default ending: ROLLBACK.
+-- To persist mutations for an experiment, replace ROLLBACK with COMMIT,
+-- then re-run Section A to restore demonstration rows by primary key.
+-- =============================================================================
+
+BEGIN;
+
+-- B.1 UPDATE: mark unread feedback as read (demonstration only).
+UPDATE "feedback"
+SET "isRead" = TRUE
+WHERE "id" = '00000000-0000-4000-a000-000000000601';
+
+-- B.2 UPDATE: confirm a booked appointment (status transition demo).
+UPDATE "appointments"
+SET
+  "status" = 'CONFIRMED',
+  "updatedAt" = TIMESTAMPTZ '2026-10-07 12:00:00+00'
+WHERE "id" = '00000000-0000-4000-a000-000000000510';
+
+-- B.3 UPDATE: respond to an open support query.
+UPDATE "queries"
+SET
+  "status" = 'RESOLVED',
+  "adminResponse" = 'Saturday clinics are not currently listed. Weekday slots remain available.',
+  "respondedAt" = TIMESTAMPTZ '2026-10-07 12:05:00+00',
+  "updatedAt" = TIMESTAMPTZ '2026-10-07 12:05:00+00'
+WHERE "id" = '00000000-0000-4000-a000-000000000702';
+
+-- B.4 DELETE: remove the dedicated demonstration feedback row only.
+DELETE FROM "feedback"
+WHERE "id" = '00000000-0000-4000-a000-000000000699';
+
+-- B.5 Constraint illustration (commented).
+-- Deleting a patient who still has appointments should fail with RESTRICT:
+--   DELETE FROM "patients" WHERE "id" = '00000000-0000-4000-a000-000000000201';
+-- Uncomment only inside a disposable transaction if you want to observe the error.
+
+-- Inspect in-transaction effects (unverified until executed):
+SELECT 'feedback_601_isRead' AS demo_check, "isRead"
+FROM "feedback"
+WHERE "id" = '00000000-0000-4000-a000-000000000601';
+
+SELECT 'appointment_510_status' AS demo_check, "status"
+FROM "appointments"
+WHERE "id" = '00000000-0000-4000-a000-000000000510';
+
+SELECT COUNT(*) AS remaining_demo_feedback_699
+FROM "feedback"
+WHERE "id" = '00000000-0000-4000-a000-000000000699';
+
+-- Leave Section A intact for 03_sql_queries.sql / 04_complex_queries.sql.
+ROLLBACK;
+-- COMMIT;  -- use instead of ROLLBACK only on a disposable database, by choice.
