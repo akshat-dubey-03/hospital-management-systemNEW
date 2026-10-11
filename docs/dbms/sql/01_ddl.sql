@@ -11,6 +11,7 @@
 --
 -- This script does not DROP DATABASE, DROP TABLE, or truncate data.
 -- Includes the CHECK constraints from the additive dbms_integrity_checks migration.
+-- Views, routines, triggers and the audit table are created by 06-08.
 -- Re-running on a database that already contains these types/tables will fail.
 --
 -- Identifiers are quoted to preserve Prisma camelCase column names.
