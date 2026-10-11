@@ -4,11 +4,13 @@
 -- Source of truth:
 --   backend/prisma/schema.prisma
 --   backend/prisma/migrations/20260830194500_appointment_workflow_foundation/migration.sql
+--   backend/prisma/migrations/20261011100000_dbms_integrity_checks/migration.sql
 --
 -- Execute against a dedicated EMPTY development database only.
 -- Do not run against the Prisma-managed application database (medicore_db).
 --
 -- This script does not DROP DATABASE, DROP TABLE, or truncate data.
+-- Includes the CHECK constraints from the additive dbms_integrity_checks migration.
 -- Re-running on a database that already contains these types/tables will fail.
 --
 -- Identifiers are quoted to preserve Prisma camelCase column names.
@@ -279,3 +281,47 @@ WHERE "status" NOT IN (
   'CANCELLED_BY_DOCTOR',
   'CANCELLED_BY_ADMIN'
 );
+
+-- -----------------------------------------------------------------------------
+-- CHECK constraints — added after Review 1
+-- Source: backend/prisma/migrations/20261011100000_dbms_integrity_checks
+-- Rules previously enforced only by application code (Zod / slot generation).
+-- Times remain VARCHAR(5) 'HH:MM'; zero-padded strings compare chronologically.
+-- -----------------------------------------------------------------------------
+ALTER TABLE "feedback"
+  ADD CONSTRAINT "feedback_rating_range_chk"
+  CHECK ("rating" IS NULL OR "rating" BETWEEN 1 AND 5);
+
+ALTER TABLE "doctor_availability"
+  ADD CONSTRAINT "doctor_availability_day_of_week_chk"
+  CHECK ("dayOfWeek" BETWEEN 0 AND 6);
+
+ALTER TABLE "doctor_availability"
+  ADD CONSTRAINT "doctor_availability_time_format_chk"
+  CHECK ("startTime" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+     AND "endTime"   ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
+
+ALTER TABLE "doctor_availability"
+  ADD CONSTRAINT "doctor_availability_time_order_chk"
+  CHECK ("endTime" > "startTime");
+
+ALTER TABLE "doctors"
+  ADD CONSTRAINT "doctors_slot_duration_positive_chk"
+  CHECK ("slotDurationMinutes" > 0);
+
+ALTER TABLE "doctors"
+  ADD CONSTRAINT "doctors_experience_years_nonnegative_chk"
+  CHECK ("experienceYears" IS NULL OR "experienceYears" >= 0);
+
+ALTER TABLE "doctors"
+  ADD CONSTRAINT "doctors_consultation_fee_nonnegative_chk"
+  CHECK ("consultationFee" IS NULL OR "consultationFee" >= 0);
+
+ALTER TABLE "appointments"
+  ADD CONSTRAINT "appointments_time_format_chk"
+  CHECK ("startTime" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+     AND "endTime"   ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
+
+ALTER TABLE "appointments"
+  ADD CONSTRAINT "appointments_time_order_chk"
+  CHECK ("endTime" > "startTime");

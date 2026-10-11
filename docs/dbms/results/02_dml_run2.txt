@@ -1,9 +1,9 @@
--- MediCore DBMS Phase 1 execution evidence
--- Run (UTC): 2026-10-10T18:07:06Z
--- Database: medicore_dbms_test (disposable Docker container medicore_dbms_test, image postgres:15)
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-11T11:42:13Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p3b
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
--- psql flags: -v ON_ERROR_STOP=1 -X -e
--- File: sql/02_dml.sql (run 2 of 2 — idempotency check)
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/02_dml.sql
 
 INSERT INTO "users" (
   "id", "email", "passwordHash", "role", "isActive", "createdAt", "updatedAt"
@@ -443,33 +443,3 @@ WHERE "id" = '00000000-0000-4000-a000-000000000699';
 ROLLBACK;
 ROLLBACK
 EXIT_CODE=0
-
--- Row counts after run 2
-          t          | count 
----------------------+-------
- users               |    13
- departments         |     6
- patients            |     6
- doctors             |     6
- doctor_availability |    10
- appointments        |    15
- feedback            |     5
- queries             |     5
- chat_conversations  |     3
- chat_messages       |     6
-(10 rows)
-
--- Post-ROLLBACK state (Section B changes must not persist)
-          k          |   v    
----------------------+--------
- feedback_601_isRead | false
- appt_510_status     | BOOKED
- query_702_status    | OPEN
- feedback_699_exists | 1
-(4 rows)
-
--- Appointments outside an active doctor_availability block (expect 0 rows)
- id | appointmentDate | startTime 
-----+-----------------+-----------
-(0 rows)
-
