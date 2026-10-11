@@ -1,0 +1,18 @@
+-- Jest test-database guard and suite run
+-- Run (UTC): 2026-10-11T11:48:53Z   Jest 29, Node v22.23.3
+
+==== case 1: TEST_DATABASE_URL unset (expect refusal)
+      16 |     'TEST_DATABASE_URL is not set. Jest suites delete fixture rows and must run against a dedicated test database.'
+    TEST_DATABASE_URL is not set. Jest suites delete fixture rows and must run against a dedicated test database.
+Test Suites: 3 failed, 3 total
+
+==== case 2: TEST_DATABASE_URL -> database medicore_db on an unreachable host (expect refusal before connecting)
+    Refusing to run tests against database "medicore_db": the name must identify a dedicated test database (contain "test").
+Test Suites: 3 failed, 3 total
+
+==== case 3: TEST_DATABASE_URL -> medicore_dbms_apptest (disposable container, migrations applied)
+PASS src/modules/dashboard/dashboard.test.js (6.818 s)
+PASS src/modules/auth/auth.role-login.test.js (7.298 s)
+PASS src/modules/appointments/appointments.workflow.test.js
+Test Suites: 3 passed, 3 total
+Tests:       23 passed, 23 total

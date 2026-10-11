@@ -1,2 +1,2 @@
-# Shell scripts must keep LF endings or bash fails with "" errors on Windows checkouts.
+# Shell scripts must keep LF line endings: bash fails on CRLF ("\r: command not found").
 *.sh text eol=lf
