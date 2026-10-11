@@ -1,0 +1,404 @@
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-11T11:58:00Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p6
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/07_procedures_functions.sql
+
+CREATE OR REPLACE PROCEDURE "sp_cancel_appointment"(
+  p_appointment_id UUID,
+  p_cancel_status  "AppointmentStatus",
+  p_reason         TEXT DEFAULT NULL,
+  p_as_of          TIMESTAMPTZ DEFAULT now()
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_status "AppointmentStatus";
+  v_starts TIMESTAMPTZ;
+BEGIN
+  IF p_appointment_id IS NULL OR p_cancel_status IS NULL THEN
+    RAISE EXCEPTION 'appointment id and cancel status are required'
+      USING ERRCODE = 'null_value_not_allowed';
+  END IF;
+
+  IF p_cancel_status NOT IN ('CANCELLED_BY_PATIENT', 'CANCELLED_BY_DOCTOR', 'CANCELLED_BY_ADMIN') THEN
+    RAISE EXCEPTION 'status % is not a cancellation status', p_cancel_status
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  SELECT a."status", (a."appointmentDate" + a."startTime"::TIME) AT TIME ZONE 'UTC'
+    INTO v_status, v_starts
+  FROM "appointments" AS a
+  WHERE a."id" = p_appointment_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'appointment % not found', p_appointment_id
+      USING ERRCODE = 'no_data_found';
+  END IF;
+
+  IF v_status NOT IN ('BOOKED', 'CONFIRMED') THEN
+    RAISE EXCEPTION 'appointment % is % and cannot be cancelled', p_appointment_id, v_status
+      USING ERRCODE = 'object_not_in_prerequisite_state';
+  END IF;
+
+  IF v_starts <= p_as_of THEN
+    RAISE EXCEPTION 'appointment % started at % and can no longer be cancelled', p_appointment_id, v_starts
+      USING ERRCODE = 'object_not_in_prerequisite_state';
+  END IF;
+
+  -- updatedAt is set explicitly: Prisma's @updatedAt is client-side only and
+  -- is not a database default.
+  UPDATE "appointments"
+  SET "status"             = p_cancel_status,
+      "cancellationReason" = NULLIF(btrim(p_reason), ''),
+      "cancelledAt"        = now(),
+      "updatedAt"          = now()
+  WHERE "id" = p_appointment_id;
+END;
+$$;
+CREATE PROCEDURE
+COMMENT ON PROCEDURE "sp_cancel_appointment"(UUID, "AppointmentStatus", TEXT, TIMESTAMPTZ) IS
+  'Cancel a BOOKED/CONFIRMED appointment that has not started. Locks the row; sets status, cancellationReason, cancelledAt, updatedAt. Caller controls the transaction.';
+COMMENT
+CREATE OR REPLACE PROCEDURE "sp_respond_to_query"(
+  p_query_id UUID,
+  p_status   "QueryStatus",
+  p_response TEXT DEFAULT NULL
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_status   "QueryStatus";
+  v_response TEXT := NULLIF(btrim(p_response), '');
+BEGIN
+  IF p_query_id IS NULL OR p_status IS NULL THEN
+    RAISE EXCEPTION 'query id and status are required'
+      USING ERRCODE = 'null_value_not_allowed';
+  END IF;
+
+  IF p_status = 'OPEN' THEN
+    RAISE EXCEPTION 'a query cannot be moved back to OPEN'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  IF p_status = 'RESOLVED' AND v_response IS NULL THEN
+    RAISE EXCEPTION 'a response is required to resolve a query'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  SELECT q."status" INTO v_status
+  FROM "queries" AS q
+  WHERE q."id" = p_query_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'query % not found', p_query_id
+      USING ERRCODE = 'no_data_found';
+  END IF;
+
+  IF v_status = 'CLOSED' THEN
+    RAISE EXCEPTION 'query % is CLOSED and cannot be changed', p_query_id
+      USING ERRCODE = 'object_not_in_prerequisite_state';
+  END IF;
+
+  UPDATE "queries"
+  SET "status"        = p_status,
+      "adminResponse" = COALESCE(v_response, "adminResponse"),
+      "respondedAt"   = CASE WHEN v_response IS NOT NULL THEN now() ELSE "respondedAt" END,
+      "updatedAt"     = now()
+  WHERE "id" = p_query_id;
+END;
+$$;
+CREATE PROCEDURE
+COMMENT ON PROCEDURE "sp_respond_to_query"(UUID, "QueryStatus", TEXT) IS
+  'Move a support query to IN_PROGRESS/RESOLVED/CLOSED with an optional response (required for RESOLVED). CLOSED is terminal. Caller controls the transaction.';
+COMMENT
+CREATE OR REPLACE FUNCTION "fn_doctor_completed_count"(p_doctor_id UUID)
+RETURNS INTEGER
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT CASE
+           WHEN NOT EXISTS (SELECT 1 FROM "doctors" WHERE "id" = p_doctor_id) THEN NULL
+           ELSE (SELECT COUNT(*)::INTEGER FROM "appointments"
+                 WHERE "doctorId" = p_doctor_id AND "status" = 'COMPLETED')
+         END;
+$$;
+CREATE FUNCTION
+COMMENT ON FUNCTION "fn_doctor_completed_count"(UUID) IS
+  'Number of COMPLETED appointments for a doctor; NULL if the doctor does not exist. Read-only (STABLE).';
+COMMENT
+CREATE OR REPLACE FUNCTION "fn_patient_upcoming_count"(
+  p_patient_id UUID,
+  p_as_of      DATE DEFAULT CURRENT_DATE
+)
+RETURNS INTEGER
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT CASE
+           WHEN NOT EXISTS (SELECT 1 FROM "patients" WHERE "id" = p_patient_id) THEN NULL
+           ELSE (SELECT COUNT(*)::INTEGER FROM "appointments"
+                 WHERE "patientId" = p_patient_id
+                   AND "status" IN ('BOOKED', 'CONFIRMED')
+                   AND "appointmentDate" >= p_as_of)
+         END;
+$$;
+CREATE FUNCTION
+COMMENT ON FUNCTION "fn_patient_upcoming_count"(UUID, DATE) IS
+  'Number of BOOKED/CONFIRMED appointments for a patient on or after p_as_of (default today); NULL if the patient does not exist. Read-only (STABLE).';
+COMMENT
+REVOKE EXECUTE ON PROCEDURE "sp_cancel_appointment"(UUID, "AppointmentStatus", TEXT, TIMESTAMPTZ) FROM PUBLIC;
+REVOKE
+REVOKE EXECUTE ON PROCEDURE "sp_respond_to_query"(UUID, "QueryStatus", TEXT) FROM PUBLIC;
+REVOKE
+SELECT p.proname AS routine,
+       CASE p.prokind WHEN 'p' THEN 'procedure' WHEN 'f' THEN 'function' END AS kind,
+       pg_get_function_identity_arguments(p.oid) AS arguments,
+       CASE p.provolatile WHEN 's' THEN 'STABLE' WHEN 'v' THEN 'VOLATILE' WHEN 'i' THEN 'IMMUTABLE' END AS volatility,
+       p.prosecdef AS security_definer,
+       p.proacl AS acl
+FROM pg_proc p
+WHERE p.pronamespace = 'public'::regnamespace AND p.proname ~ '^(sp|fn)_'
+ORDER BY kind DESC, routine;
+          routine          |   kind    |                                                        arguments                                                        | volatility | security_definer |          acl          
+---------------------------+-----------+-------------------------------------------------------------------------------------------------------------------------+------------+------------------+-----------------------
+ sp_cancel_appointment     | procedure | IN p_appointment_id uuid, IN p_cancel_status "AppointmentStatus", IN p_reason text, IN p_as_of timestamp with time zone | VOLATILE   | t                | {postgres=X/postgres}
+ sp_respond_to_query       | procedure | IN p_query_id uuid, IN p_status "QueryStatus", IN p_response text                                                       | VOLATILE   | t                | {postgres=X/postgres}
+ fn_doctor_completed_count | function  | p_doctor_id uuid                                                                                                        | STABLE     | f                | 
+ fn_patient_upcoming_count | function  | p_patient_id uuid, p_as_of date                                                                                         | STABLE     | f                | 
+(4 rows)
+
+SELECT d."lastName",
+       fn_doctor_completed_count(d."id") AS fn_completed,
+       (SELECT COUNT(*) FROM "appointments" a
+        WHERE a."doctorId" = d."id" AND a."status" = 'COMPLETED') AS direct_count
+FROM "doctors" d
+ORDER BY d."lastName";
+ lastName | fn_completed | direct_count 
+----------+--------------+--------------
+ Gupta    |            0 |            0
+ Kapoor   |            1 |            1
+ Mehta    |            1 |            1
+ Rao      |            0 |            0
+ Sharma   |            2 |            2
+ Singh    |            0 |            0
+(6 rows)
+
+SELECT fn_doctor_completed_count('00000000-0000-4000-a000-00000000ffff') AS unknown_doctor;
+ unknown_doctor 
+----------------
+               
+(1 row)
+
+SELECT p."lastName",
+       fn_patient_upcoming_count(p."id", DATE '2026-10-01') AS upcoming_from_oct_1,
+       fn_patient_upcoming_count(p."id", DATE '2026-10-16') AS upcoming_from_oct_16
+FROM "patients" p
+ORDER BY p."lastName";
+ lastName | upcoming_from_oct_1 | upcoming_from_oct_16 
+----------+---------------------+----------------------
+ Iyer     |                   1 |                    1
+ Joshi    |                   1 |                    0
+ Kumar    |                   2 |                    1
+ Nair     |                   1 |                    1
+ Patel    |                   2 |                    1
+ Reddy    |                   1 |                    0
+(6 rows)
+
+SELECT p."firstName", p."lastName"
+FROM "patients" p
+WHERE fn_patient_upcoming_count(p."id", DATE '2026-10-01') >= 2
+ORDER BY p."lastName";
+ firstName | lastName 
+-----------+----------
+ Rahul     | Kumar
+ Sneha     | Patel
+(2 rows)
+
+SELECT fn_patient_upcoming_count('00000000-0000-4000-a000-00000000ffff', DATE '2026-10-01') AS unknown_patient;
+ unknown_patient 
+-----------------
+                
+(1 row)
+
+BEGIN;
+BEGIN
+SELECT "status", "cancellationReason", "cancelledAt", "updatedAt"
+FROM "appointments" WHERE "id" = '00000000-0000-4000-a000-000000000510';
+ status | cancellationReason | cancelledAt |       updatedAt        
+--------+--------------------+-------------+------------------------
+ BOOKED |                    |             | 2026-10-01 09:00:00+00
+(1 row)
+
+CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510',
+                           'CANCELLED_BY_PATIENT', '  Travelling that week  ',
+                           TIMESTAMPTZ '2026-10-10 09:00+00');
+CALL
+SELECT "status", "cancellationReason", "cancelledAt" IS NOT NULL AS cancelled_at_set,
+       "updatedAt" = now() AS updated_at_is_txn_time
+FROM "appointments" WHERE "id" = '00000000-0000-4000-a000-000000000510';
+        status        |  cancellationReason  | cancelled_at_set | updated_at_is_txn_time 
+----------------------+----------------------+------------------+------------------------
+ CANCELLED_BY_PATIENT | Travelling that week | t                | t
+(1 row)
+
+DO $$
+BEGIN
+  CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510',
+                             'CANCELLED_BY_PATIENT', NULL, TIMESTAMPTZ '2026-10-10 09:00+00');
+  RAISE EXCEPTION 'FAIL: second cancel was accepted';
+EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  RAISE NOTICE 'PASS repeated cancel refused: %', SQLERRM;
+END $$;
+NOTICE:  PASS repeated cancel refused: appointment 00000000-0000-4000-a000-000000000510 is CANCELLED_BY_PATIENT and cannot be cancelled
+DO
+INSERT INTO "appointments" ("patientId", "doctorId", "appointmentDate", "startTime", "endTime", "status", "updatedAt")
+VALUES ('00000000-0000-4000-a000-000000000203', '00000000-0000-4000-a000-000000000301',
+        DATE '2026-10-15', '10:00', '10:30', 'BOOKED', now());
+INSERT 0 1
+SELECT COUNT(*) AS rows_in_slot,
+       COUNT(*) FILTER (WHERE "status" IN ('BOOKED', 'CONFIRMED')) AS active_rows_in_slot
+FROM "appointments"
+WHERE "doctorId" = '00000000-0000-4000-a000-000000000301'
+  AND "appointmentDate" = DATE '2026-10-15' AND "startTime" = '10:00';
+ rows_in_slot | active_rows_in_slot 
+--------------+---------------------
+            2 |                   1
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+SELECT "status", "cancellationReason", "cancelledAt"
+FROM "appointments" WHERE "id" = '00000000-0000-4000-a000-000000000510';
+ status | cancellationReason | cancelledAt 
+--------+--------------------+-------------
+ BOOKED |                    | 
+(1 row)
+
+DO $$
+BEGIN
+  CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000501',
+                             'CANCELLED_BY_ADMIN', NULL, TIMESTAMPTZ '2026-10-10 09:00+00');
+  RAISE EXCEPTION 'FAIL: completed appointment was cancelled';
+EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  RAISE NOTICE 'PASS completed appointment refused: %', SQLERRM;
+END $$;
+NOTICE:  PASS completed appointment refused: appointment 00000000-0000-4000-a000-000000000501 is COMPLETED and cannot be cancelled
+DO
+DO $$
+BEGIN
+  CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000508',
+                             'CANCELLED_BY_DOCTOR', NULL, TIMESTAMPTZ '2026-10-10 09:00+00');
+  RAISE EXCEPTION 'FAIL: started appointment was cancelled';
+EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  RAISE NOTICE 'PASS started appointment refused: %', SQLERRM;
+END $$;
+NOTICE:  PASS started appointment refused: appointment 00000000-0000-4000-a000-000000000508 started at 2026-10-07 09:00:00+00 and can no longer be cancelled
+DO
+DO $$
+BEGIN
+  CALL sp_cancel_appointment('00000000-0000-4000-a000-00000000ffff', 'CANCELLED_BY_ADMIN');
+  RAISE EXCEPTION 'FAIL: unknown id accepted';
+EXCEPTION WHEN no_data_found THEN
+  RAISE NOTICE 'PASS unknown appointment: %', SQLERRM;
+END $$;
+DO
+DO $$
+BEGIN
+  CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'COMPLETED');
+  RAISE EXCEPTION 'FAIL: COMPLETED accepted as cancel status';
+EXCEPTION WHEN invalid_parameter_value THEN
+  RAISE NOTICE 'PASS invalid cancel status: %', SQLERRM;
+END $$;
+NOTICE:  PASS unknown appointment: appointment 00000000-0000-4000-a000-00000000ffff not found
+DO
+DO $$
+BEGIN
+  CALL sp_cancel_appointment(NULL, 'CANCELLED_BY_ADMIN');
+  RAISE EXCEPTION 'FAIL: NULL id accepted';
+EXCEPTION WHEN null_value_not_allowed THEN
+  RAISE NOTICE 'PASS NULL id: %', SQLERRM;
+END $$;
+NOTICE:  PASS invalid cancel status: status COMPLETED is not a cancellation status
+DO
+BEGIN;
+BEGIN
+CALL sp_respond_to_query('00000000-0000-4000-a000-000000000702', 'RESOLVED',
+                         'Saturday clinics are not offered; weekday slots are open.');
+NOTICE:  PASS NULL id: appointment id and cancel status are required
+CALL
+SELECT "status", "adminResponse", "respondedAt" IS NOT NULL AS responded_at_set
+FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000702';
+  status  |                       adminResponse                       | responded_at_set 
+----------+-----------------------------------------------------------+------------------
+ RESOLVED | Saturday clinics are not offered; weekday slots are open. | t
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CALL sp_respond_to_query('00000000-0000-4000-a000-000000000705', 'IN_PROGRESS');
+CALL
+SELECT "status", "adminResponse", "respondedAt"
+FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000705';
+   status    | adminResponse | respondedAt 
+-------------+---------------+-------------
+ IN_PROGRESS |               | 
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+DO $$
+BEGIN
+  CALL sp_respond_to_query('00000000-0000-4000-a000-000000000702', 'RESOLVED', '   ');
+  RAISE EXCEPTION 'FAIL: blank response accepted for RESOLVED';
+EXCEPTION WHEN invalid_parameter_value THEN
+  RAISE NOTICE 'PASS RESOLVED without response: %', SQLERRM;
+END $$;
+DO
+DO $$
+BEGIN
+  CALL sp_respond_to_query('00000000-0000-4000-a000-000000000703', 'OPEN');
+  RAISE EXCEPTION 'FAIL: OPEN accepted';
+EXCEPTION WHEN invalid_parameter_value THEN
+  RAISE NOTICE 'PASS back to OPEN: %', SQLERRM;
+END $$;
+NOTICE:  PASS RESOLVED without response: a response is required to resolve a query
+NOTICE:  PASS back to OPEN: a query cannot be moved back to OPEN
+DO
+DO $$
+BEGIN
+  CALL sp_respond_to_query('00000000-0000-4000-a000-000000000704', 'RESOLVED', 'Reopening');
+  RAISE EXCEPTION 'FAIL: CLOSED query changed';
+EXCEPTION WHEN object_not_in_prerequisite_state THEN
+  RAISE NOTICE 'PASS CLOSED is terminal: %', SQLERRM;
+END $$;
+NOTICE:  PASS CLOSED is terminal: query 00000000-0000-4000-a000-000000000704 is CLOSED and cannot be changed
+DO
+DO $$
+BEGIN
+  CALL sp_respond_to_query('00000000-0000-4000-a000-00000000ffff', 'CLOSED');
+  RAISE EXCEPTION 'FAIL: unknown query accepted';
+EXCEPTION WHEN no_data_found THEN
+  RAISE NOTICE 'PASS unknown query: %', SQLERRM;
+END $$;
+NOTICE:  PASS unknown query: query 00000000-0000-4000-a000-00000000ffff not found
+DO
+SELECT (SELECT "status" FROM "appointments" WHERE "id" = '00000000-0000-4000-a000-000000000510') AS appt_510,
+       (SELECT "status" FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000702') AS query_702,
+       (SELECT "status" FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000705') AS query_705,
+       (SELECT COUNT(*) FROM "appointments") AS appointment_rows;
+ appt_510 | query_702 | query_705 | appointment_rows 
+----------+-----------+-----------+------------------
+ BOOKED   | OPEN      | OPEN      |               15
+(1 row)
+
+EXIT_CODE=0
