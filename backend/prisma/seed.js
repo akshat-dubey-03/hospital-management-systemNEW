@@ -1,9 +1,19 @@
 // prisma/seed.js
 // Demo data seeding script for MediCore HMS.
-// Run: npm run db:seed
+// Run: npm run db:seed   (or: npx prisma db seed)
 //
 // IMPORTANT: These are development-only credentials.
 // Never use in production.
+//
+// Repeatable by design:
+//   - Every row is written with upsert, keyed by a natural unique key (email,
+//     department name, doctor/day/start) or by a fixed demo UUID, so a second
+//     run updates the same rows instead of adding duplicates.
+//   - Appointment dates are derived from one anchor date (SEED_ANCHOR_DATE,
+//     'YYYY-MM-DD', default: today in UTC) and snapped to a weekday on which
+//     the doctor actually has an availability block.
+//   - All writes run in one interactive transaction: a failure leaves no
+//     half-written dataset.
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
@@ -11,17 +21,68 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 const SALT_ROUNDS = 12;
 
+if (process.env.NODE_ENV === 'production') {
+  console.error('❌ Refusing to seed demo data with NODE_ENV=production.');
+  process.exit(1);
+}
+
 async function hash(password) {
   return bcrypt.hash(password, SALT_ROUNDS);
 }
 
+// Fixed IDs for seed rows that have no natural unique key. The ...-b000-...
+// namespace keeps them apart from the docs/dbms demo DML (...-a000-...).
+const SEED_ID = (n) => `00000000-0000-4000-b000-${String(n).padStart(12, '0')}`;
+
+const anchor = parseAnchor(process.env.SEED_ANCHOR_DATE);
+
+function parseAnchor(value) {
+  if (!value) {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error('SEED_ANCHOR_DATE must use YYYY-MM-DD format.');
+  }
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+// Date `offsetDays` from the anchor, moved away from the anchor (forward for
+// future offsets, backward for past ones) to the nearest date whose weekday is
+// `dayOfWeek` (0=Monday … 6=Sunday, the app's convention).
+function seedDate(offsetDays, dayOfWeek) {
+  const d = new Date(anchor);
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  const step = offsetDays < 0 ? -1 : 1;
+  while ((d.getUTCDay() + 6) % 7 !== dayOfWeek) {
+    d.setUTCDate(d.getUTCDate() + step);
+  }
+  return d;
+}
+
+function atTime(date, hhmm) {
+  return new Date(`${date.toISOString().slice(0, 10)}T${hhmm}:00.000Z`);
+}
+
 async function main() {
+  // bcrypt is slow; hash once, outside the transaction.
+  const passwords = {
+    admin: await hash('Admin@1234'),
+    doctor: await hash('Doctor@1234'),
+    patient: await hash('Patient@1234'),
+  };
+
+  await prisma.$transaction((tx) => seed(tx, passwords), { maxWait: 10_000, timeout: 60_000 });
+  printCredentials();
+}
+
+async function seed(tx, passwords) {
   console.log('🌱 Starting seed...');
 
   // ─── 1. Departments ──────────────────────────────────────────
   console.log('Creating departments...');
   const departments = await Promise.all([
-    prisma.department.upsert({
+    tx.department.upsert({
       where: { name: 'Cardiology' },
       update: {},
       create: {
@@ -30,7 +91,7 @@ async function main() {
           'Specializes in heart diseases, including diagnosis and treatment of conditions such as coronary artery disease, heart failure, and arrhythmias.',
       },
     }),
-    prisma.department.upsert({
+    tx.department.upsert({
       where: { name: 'Neurology' },
       update: {},
       create: {
@@ -39,7 +100,7 @@ async function main() {
           'Deals with disorders of the nervous system including the brain, spinal cord, and peripheral nerves.',
       },
     }),
-    prisma.department.upsert({
+    tx.department.upsert({
       where: { name: 'Orthopedics' },
       update: {},
       create: {
@@ -48,7 +109,7 @@ async function main() {
           'Focuses on conditions involving the musculoskeletal system — bones, joints, ligaments, tendons, and muscles.',
       },
     }),
-    prisma.department.upsert({
+    tx.department.upsert({
       where: { name: 'Pediatrics' },
       update: {},
       create: {
@@ -57,7 +118,7 @@ async function main() {
           'Medical care of infants, children, and adolescents. Covers preventive care, growth assessment, and treatment of childhood diseases.',
       },
     }),
-    prisma.department.upsert({
+    tx.department.upsert({
       where: { name: 'Dermatology' },
       update: {},
       create: {
@@ -66,7 +127,7 @@ async function main() {
           'Concerned with skin, hair, and nail conditions including acne, eczema, psoriasis, and skin cancer screening.',
       },
     }),
-    prisma.department.upsert({
+    tx.department.upsert({
       where: { name: 'General Medicine' },
       update: {},
       create: {
@@ -85,12 +146,12 @@ async function main() {
 
   // ─── 2. Admin User ────────────────────────────────────────────
   console.log('Creating admin...');
-  await prisma.user.upsert({
+  await tx.user.upsert({
     where: { email: 'admin@medicore.dev' },
     update: {},
     create: {
       email: 'admin@medicore.dev',
-      passwordHash: await hash('Admin@1234'),
+      passwordHash: passwords.admin,
       role: 'ADMIN',
     },
   });
@@ -225,17 +286,17 @@ async function main() {
 
   const doctorMap = {};
   for (const seed of doctorSeeds) {
-    const userRecord = await prisma.user.upsert({
+    const userRecord = await tx.user.upsert({
       where: { email: seed.email },
       update: {},
       create: {
         email: seed.email,
-        passwordHash: await hash('Doctor@1234'),
+        passwordHash: passwords.doctor,
         role: 'DOCTOR',
       },
     });
 
-    const doctorRecord = await prisma.doctor.upsert({
+    const doctorRecord = await tx.doctor.upsert({
       where: { userId: userRecord.id },
       update: {},
       create: {
@@ -254,7 +315,7 @@ async function main() {
 
     // Upsert availability blocks
     for (const avail of seed.availability) {
-      await prisma.doctorAvailability.upsert({
+      await tx.doctorAvailability.upsert({
         where: {
           doctorId_dayOfWeek_startTime: {
             doctorId: doctorRecord.id,
@@ -329,17 +390,17 @@ async function main() {
 
   const patientMap = {};
   for (const seed of patientSeeds) {
-    const userRecord = await prisma.user.upsert({
+    const userRecord = await tx.user.upsert({
       where: { email: seed.email },
       update: {},
       create: {
         email: seed.email,
-        passwordHash: await hash('Patient@1234'),
+        passwordHash: passwords.patient,
         role: 'PATIENT',
       },
     });
 
-    const patientRecord = await prisma.patient.upsert({
+    const patientRecord = await tx.patient.upsert({
       where: { userId: userRecord.id },
       update: {},
       create: {
@@ -360,13 +421,6 @@ async function main() {
   // ─── 5. Sample Appointments ────────────────────────────────────
   console.log('Creating appointments...');
 
-  // Helper: date offset from today
-  function offsetDate(days) {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d;
-  }
-
   const p1 = patientMap['patient1@demo.com'].patient;
   const p2 = patientMap['patient2@demo.com'].patient;
   const p3 = patientMap['patient3@demo.com'].patient;
@@ -379,21 +433,25 @@ async function main() {
   const drSingh = doctorMap['dr.singh@medicore.dev'].doctor;
   const drVerma = doctorMap['dr.verma@medicore.dev'].doctor;
 
+  // Each `day` is a weekday on which that doctor has an availability block
+  // covering the slot (see doctorSeeds above).
   const appointmentSeeds = [
     // UPCOMING — BOOKED
     {
+      id: SEED_ID(501),
       patientId: p1.id,
       doctorId: drSharma.id,
-      appointmentDate: offsetDate(3),
+      appointmentDate: seedDate(3, 1), // Tue 09:00–13:00
       startTime: '10:00',
       endTime: '10:30',
       status: 'BOOKED',
       reasonForVisit: 'Chest discomfort and shortness of breath during exercise',
     },
     {
+      id: SEED_ID(502),
       patientId: p2.id,
       doctorId: drKapoor.id,
-      appointmentDate: offsetDate(5),
+      appointmentDate: seedDate(5, 1), // Tue 09:00–13:00
       startTime: '11:00',
       endTime: '11:30',
       status: 'BOOKED',
@@ -401,27 +459,30 @@ async function main() {
     },
     // UPCOMING — CONFIRMED
     {
+      id: SEED_ID(503),
       patientId: p3.id,
       doctorId: drMehta.id,
-      appointmentDate: offsetDate(2),
+      appointmentDate: seedDate(2, 2), // Wed 09:00–13:00
       startTime: '09:00',
       endTime: '09:30',
       status: 'CONFIRMED',
       reasonForVisit: 'Knee pain after sports injury',
     },
     {
+      id: SEED_ID(504),
       patientId: p4.id,
       doctorId: drSingh.id,
-      appointmentDate: offsetDate(7),
+      appointmentDate: seedDate(7, 0), // Mon 14:00–17:00
       startTime: '14:00',
       endTime: '14:20',
       status: 'CONFIRMED',
       reasonForVisit: 'Routine child health checkup',
     },
     {
+      id: SEED_ID(505),
       patientId: p1.id,
       doctorId: drVerma.id,
-      appointmentDate: offsetDate(4),
+      appointmentDate: seedDate(4, 3), // Thu 08:00–13:00
       startTime: '08:30',
       endTime: '09:00',
       status: 'CONFIRMED',
@@ -429,9 +490,10 @@ async function main() {
     },
     // PAST — COMPLETED
     {
+      id: SEED_ID(506),
       patientId: p1.id,
       doctorId: drSharma.id,
-      appointmentDate: offsetDate(-14),
+      appointmentDate: seedDate(-14, 3), // Thu 09:00–13:00
       startTime: '09:30',
       endTime: '10:00',
       status: 'COMPLETED',
@@ -439,9 +501,10 @@ async function main() {
       notes: 'ECG normal. Advised lifestyle modifications. No medication required at this stage.',
     },
     {
+      id: SEED_ID(507),
       patientId: p2.id,
       doctorId: drVerma.id,
-      appointmentDate: offsetDate(-7),
+      appointmentDate: seedDate(-7, 0), // Mon 08:00–13:00
       startTime: '10:00',
       endTime: '10:30',
       status: 'COMPLETED',
@@ -449,152 +512,190 @@ async function main() {
       notes: 'Viral infection. Prescribed paracetamol and rest.',
     },
     {
+      id: SEED_ID(508),
       patientId: p5.id,
       doctorId: drMehta.id,
-      appointmentDate: offsetDate(-30),
+      appointmentDate: seedDate(-30, 4), // Fri 14:00–17:00
       startTime: '14:00',
       endTime: '14:30',
       status: 'COMPLETED',
       reasonForVisit: 'Back pain',
       notes: 'Lumbar strain. Physiotherapy recommended.',
     },
-    // PAST — CANCELLED
+    // PAST — CANCELLED (cancelled at noon the day before the visit)
     {
+      id: SEED_ID(509),
       patientId: p3.id,
       doctorId: drKapoor.id,
-      appointmentDate: offsetDate(-5),
+      appointmentDate: seedDate(-5, 0), // Mon 10:00–14:00
       startTime: '10:00',
       endTime: '10:30',
       status: 'CANCELLED_BY_PATIENT',
       reasonForVisit: 'Headache evaluation',
       cancellationReason: 'Could not attend due to personal emergency',
-      cancelledAt: new Date(),
     },
     {
+      id: SEED_ID(510),
       patientId: p4.id,
       doctorId: drVerma.id,
-      appointmentDate: offsetDate(-10),
+      appointmentDate: seedDate(-10, 2), // Wed 08:00–13:00
       startTime: '09:00',
       endTime: '09:30',
       status: 'CANCELLED_BY_DOCTOR',
       reasonForVisit: 'Routine checkup',
       cancellationReason: 'Doctor unavailable due to medical conference',
-      cancelledAt: new Date(),
     },
   ];
 
   for (const appt of appointmentSeeds) {
-    await prisma.appointment.create({ data: appt });
+    const isCancelled = appt.status.startsWith('CANCELLED');
+    const data = {
+      ...appt,
+      notes: appt.notes ?? null,
+      cancellationReason: appt.cancellationReason ?? null,
+      cancelledAt: isCancelled ? new Date(atTime(appt.appointmentDate, '12:00').getTime() - 86_400_000) : null,
+    };
+    const { id, ...update } = data;
+    await tx.appointment.upsert({ where: { id }, update, create: data });
   }
   console.log(`  ✓ ${appointmentSeeds.length} appointments`);
 
   // ─── 6. Feedback ──────────────────────────────────────────────
   console.log('Creating feedback...');
 
-  await prisma.feedback.createMany({
-    data: [
-      {
-        patientId: p1.id,
-        subject: 'Excellent care from Dr. Sharma',
-        message:
-          'Dr. Sharma was very thorough and explained everything clearly. The booking process through MediCore was seamless. Highly recommend!',
-        rating: 5,
-        isRead: false,
-      },
-      {
-        patientId: p2.id,
-        subject: 'Good experience overall',
-        message:
-          'The appointment system is very convenient. Dr. Kapoor was knowledgeable and patient. Waiting time was a bit long but overall a good experience.',
-        rating: 4,
-        isRead: true,
-      },
-      {
-        patientId: p5.id,
-        subject: 'Suggestion for improvement',
-        message:
-          'It would be helpful to receive appointment reminders via SMS. The system is good but reminders would make it better.',
-        rating: 3,
-        isRead: false,
-      },
-    ],
-  });
-  console.log('  ✓ 3 feedback entries');
+  const feedbackSeeds = [
+    {
+      id: SEED_ID(601),
+      patientId: p1.id,
+      subject: 'Excellent care from Dr. Sharma',
+      message:
+        'Dr. Sharma was very thorough and explained everything clearly. The booking process through MediCore was seamless. Highly recommend!',
+      rating: 5,
+      isRead: false,
+    },
+    {
+      id: SEED_ID(602),
+      patientId: p2.id,
+      subject: 'Good experience overall',
+      message:
+        'The appointment system is very convenient. Dr. Kapoor was knowledgeable and patient. Waiting time was a bit long but overall a good experience.',
+      rating: 4,
+      isRead: true,
+    },
+    {
+      id: SEED_ID(603),
+      patientId: p5.id,
+      subject: 'Suggestion for improvement',
+      message:
+        'It would be helpful to receive appointment reminders via SMS. The system is good but reminders would make it better.',
+      rating: 3,
+      isRead: false,
+    },
+  ];
+
+  for (const fb of feedbackSeeds) {
+    const { id, ...update } = fb;
+    await tx.feedback.upsert({ where: { id }, update, create: fb });
+  }
+  console.log(`  ✓ ${feedbackSeeds.length} feedback entries`);
 
   // ─── 7. Queries ───────────────────────────────────────────────
   console.log('Creating queries...');
 
-  await prisma.query.createMany({
-    data: [
-      {
-        patientId: p3.id,
-        subject: 'How do I reschedule an appointment?',
-        message:
-          'I need to reschedule my upcoming appointment with Dr. Mehta. The system only shows a cancel option. Can I reschedule without losing my slot?',
-        status: 'RESOLVED',
-        adminResponse:
-          'Thank you for reaching out. Currently, to reschedule you would need to cancel the existing appointment and book a new slot. We are working on a direct reschedule feature. Sorry for the inconvenience.',
-        respondedAt: new Date(),
-      },
-      {
-        patientId: p4.id,
-        subject: 'Doctor availability query',
-        message:
-          'I would like to know if Dr. Singh is available on Saturday mornings. The system does not show any Saturday slots.',
-        status: 'OPEN',
-      },
-      {
-        patientId: p2.id,
-        subject: 'Request for medical records',
-        message:
-          'How can I access my medical records through the portal? I need my previous appointment notes for a visa application.',
-        status: 'IN_PROGRESS',
-      },
-    ],
-  });
-  console.log('  ✓ 3 queries');
+  const querySeeds = [
+    {
+      id: SEED_ID(701),
+      patientId: p3.id,
+      subject: 'How do I reschedule an appointment?',
+      message:
+        'I need to reschedule my upcoming appointment with Dr. Mehta. The system only shows a cancel option. Can I reschedule without losing my slot?',
+      status: 'RESOLVED',
+      adminResponse:
+        'Thank you for reaching out. Currently, to reschedule you would need to cancel the existing appointment and book a new slot. We are working on a direct reschedule feature. Sorry for the inconvenience.',
+      respondedAt: atTime(seedDate(-2, 0), '11:00'),
+    },
+    {
+      id: SEED_ID(702),
+      patientId: p4.id,
+      subject: 'Doctor availability query',
+      message:
+        'I would like to know if Dr. Singh is available on Saturday mornings. The system does not show any Saturday slots.',
+      status: 'OPEN',
+      adminResponse: null,
+      respondedAt: null,
+    },
+    {
+      id: SEED_ID(703),
+      patientId: p2.id,
+      subject: 'Request for medical records',
+      message:
+        'How can I access my medical records through the portal? I need my previous appointment notes for a visa application.',
+      status: 'IN_PROGRESS',
+      adminResponse: null,
+      respondedAt: null,
+    },
+  ];
+
+  for (const q of querySeeds) {
+    const { id, ...update } = q;
+    await tx.query.upsert({ where: { id }, update, create: q });
+  }
+  console.log(`  ✓ ${querySeeds.length} queries`);
 
   // ─── 8. Sample Chat Conversation ──────────────────────────────
   console.log('Creating sample chat conversation...');
 
-  const conv = await prisma.chatConversation.create({
-    data: {
-      patientId: p1.id,
-      title: 'Appointment booking help',
+  const conversation = {
+    id: SEED_ID(801),
+    patientId: p1.id,
+    title: 'Appointment booking help',
+    isActive: true,
+  };
+  {
+    const { id, ...update } = conversation;
+    await tx.chatConversation.upsert({ where: { id }, update, create: conversation });
+  }
+
+  // Explicit createdAt (one second apart) keeps message order deterministic.
+  const chatStart = atTime(seedDate(-3, 0), '10:00');
+  const messageSeeds = [
+    {
+      role: 'USER',
+      content: 'How do I book an appointment with a cardiologist?',
     },
-  });
+    {
+      role: 'ASSISTANT',
+      content:
+        "Hi! I'm MediCore Assistant 👋 I'd be happy to help you book an appointment with a cardiologist.\n\nHere's how to do it:\n1. Go to **Find Doctors** in your patient dashboard\n2. Use the department filter and select **Cardiology**\n3. Browse available cardiologists and click on one to view their profile\n4. Click **Book Appointment**\n5. Select an available date and time slot\n6. Confirm your booking\n\nYou'll receive a confirmation, and the appointment will appear in **My Appointments**. Would you like help with anything else?",
+    },
+    {
+      role: 'USER',
+      content: 'What should I expect during my first cardiology appointment?',
+    },
+    {
+      role: 'ASSISTANT',
+      content:
+        "Great question! Here's what to typically expect during a first cardiology consultation:\n\n**Before your appointment:**\n- Arrive 10–15 minutes early for paperwork\n- Bring any previous medical records or test results if available\n- List any medications you're currently taking\n\n**During the appointment:**\n- The doctor will take a detailed medical history\n- A physical examination including blood pressure, heart rate\n- They may order tests like an ECG or echocardiogram\n\n**Important:** I'm an AI assistant and not a medical professional. The exact nature of your appointment will depend on your specific situation. Your doctor will guide you appropriately.\n\nIs there anything else I can help with?",
+    },
+  ].map((msg, i) => ({
+    id: SEED_ID(901 + i),
+    conversationId: conversation.id,
+    createdAt: new Date(chatStart.getTime() + i * 1000),
+    ...msg,
+  }));
 
-  await prisma.chatMessage.createMany({
-    data: [
-      {
-        conversationId: conv.id,
-        role: 'USER',
-        content: 'How do I book an appointment with a cardiologist?',
-      },
-      {
-        conversationId: conv.id,
-        role: 'ASSISTANT',
-        content:
-          "Hi! I'm MediCore Assistant 👋 I'd be happy to help you book an appointment with a cardiologist.\n\nHere's how to do it:\n1. Go to **Find Doctors** in your patient dashboard\n2. Use the department filter and select **Cardiology**\n3. Browse available cardiologists and click on one to view their profile\n4. Click **Book Appointment**\n5. Select an available date and time slot\n6. Confirm your booking\n\nYou'll receive a confirmation, and the appointment will appear in **My Appointments**. Would you like help with anything else?",
-      },
-      {
-        conversationId: conv.id,
-        role: 'USER',
-        content: 'What should I expect during my first cardiology appointment?',
-      },
-      {
-        conversationId: conv.id,
-        role: 'ASSISTANT',
-        content:
-          "Great question! Here's what to typically expect during a first cardiology consultation:\n\n**Before your appointment:**\n- Arrive 10–15 minutes early for paperwork\n- Bring any previous medical records or test results if available\n- List any medications you're currently taking\n\n**During the appointment:**\n- The doctor will take a detailed medical history\n- A physical examination including blood pressure, heart rate\n- They may order tests like an ECG or echocardiogram\n\n**Important:** I'm an AI assistant and not a medical professional. The exact nature of your appointment will depend on your specific situation. Your doctor will guide you appropriately.\n\nIs there anything else I can help with?",
-      },
-    ],
-  });
-  console.log('  ✓ 1 sample conversation with 4 messages');
+  for (const msg of messageSeeds) {
+    const { id, ...update } = msg;
+    await tx.chatMessage.upsert({ where: { id }, update, create: msg });
+  }
+  console.log(`  ✓ 1 sample conversation with ${messageSeeds.length} messages`);
 
-  console.log('\n✅ Seed completed successfully!');
+  console.log(`\n✅ Seed completed (anchor date ${anchor.toISOString().slice(0, 10)}).`);
+}
+
+function printCredentials() {
   console.log('\n─────────────────────────────────────────────');
-  console.log('Demo Login Credentials:');
+  console.log('Demo Login Credentials (development only):');
   console.log('─────────────────────────────────────────────');
   console.log('Admin:   admin@medicore.dev    / Admin@1234');
   console.log('Doctors: dr.sharma@medicore.dev / Doctor@1234');
