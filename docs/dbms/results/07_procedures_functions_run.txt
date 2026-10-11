@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-11T12:01:38Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p7
+-- Run (UTC): 2026-10-11T12:04:46Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p8b
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/07_procedures_functions.sql
@@ -363,7 +363,6 @@ BEGIN
 EXCEPTION WHEN invalid_parameter_value THEN
   RAISE NOTICE 'PASS RESOLVED without response: %', SQLERRM;
 END $$;
-NOTICE:  PASS RESOLVED without response: a response is required to resolve a query
 DO
 DO $$
 BEGIN
@@ -372,6 +371,7 @@ BEGIN
 EXCEPTION WHEN invalid_parameter_value THEN
   RAISE NOTICE 'PASS back to OPEN: %', SQLERRM;
 END $$;
+NOTICE:  PASS RESOLVED without response: a response is required to resolve a query
 DO
 DO $$
 BEGIN
