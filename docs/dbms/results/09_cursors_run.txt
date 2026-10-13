@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-11T12:04:48Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p8b
+-- Run (UTC): 2026-10-13T09:06:19Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_final   Role: postgres
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/09_cursors.sql
@@ -141,8 +141,6 @@ NOTICE:     subtotal Neurology: 3 appointments
 NOTICE:  Orthopedics | Rohan Mehta   | total=3 pipeline=2 completed=1 cancelled=0 | workload=NORMAL
 NOTICE:     subtotal Orthopedics: 3 appointments
 NOTICE:  Pediatrics  | Anjali Singh  | total=3 pipeline=2 completed=0 cancelled=1 | workload=NORMAL
-NOTICE:     subtotal Pediatrics: 3 appointments
-NOTICE:  active doctors processed: 5, appointments: 15
 DO
 SELECT COALESCE(department_name, '(all)') AS department,
        COALESCE(doctor_name, '(subtotal)') AS doctor,
@@ -156,6 +154,8 @@ FROM "vw_dbms_doctor_appointment_stats"
 WHERE doctor_is_active
 GROUP BY GROUPING SETS ((department_name, doctor_name), (department_name), ())
 ORDER BY department_name NULLS LAST, doctor_name NULLS LAST;
+NOTICE:     subtotal Pediatrics: 3 appointments
+NOTICE:  active doctors processed: 5, appointments: 15
  department  |    doctor    | total | pipeline | workload 
 -------------+--------------+-------+----------+----------
  Cardiology  | Arjun Sharma |     6 |        3 | HIGH

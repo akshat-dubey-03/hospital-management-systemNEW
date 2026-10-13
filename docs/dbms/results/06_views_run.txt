@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-13T08:52:48Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p10   Role: postgres
+-- Run (UTC): 2026-10-13T09:06:15Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_final   Role: postgres
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/06_views.sql
@@ -235,17 +235,6 @@ WHERE u."isActive" = TRUE;
 CREATE VIEW
 -- Plain view: peek() may also report the hidden doctor (Gupta)
 SELECT last_name FROM directory_plain WHERE pg_temp.peek(last_name) ORDER BY last_name;
- last_name 
------------
- Kapoor
- Mehta
- Rao
- Sharma
- Singh
-(5 rows)
-
--- security_barrier view: peek() only sees rows that passed the view filter
-SELECT last_name FROM directory_barrier WHERE pg_temp.peek(last_name) ORDER BY last_name;
 NOTICE:  peek() saw doctor: Sharma
 NOTICE:  peek() saw doctor: Kapoor
 NOTICE:  peek() saw doctor: Mehta
@@ -261,14 +250,25 @@ NOTICE:  peek() saw doctor: Rao
  Singh
 (5 rows)
 
--- Plan of the real directory view: caller condition stays above the view (Subquery Scan)
-EXPLAIN (COSTS OFF)
-SELECT last_name FROM "vw_dbms_public_doctor_directory" WHERE pg_temp.peek(last_name);
+-- security_barrier view: peek() only sees rows that passed the view filter
+SELECT last_name FROM directory_barrier WHERE pg_temp.peek(last_name) ORDER BY last_name;
 NOTICE:  peek() saw doctor: Sharma
 NOTICE:  peek() saw doctor: Kapoor
 NOTICE:  peek() saw doctor: Mehta
 NOTICE:  peek() saw doctor: Singh
 NOTICE:  peek() saw doctor: Rao
+ last_name 
+-----------
+ Kapoor
+ Mehta
+ Rao
+ Sharma
+ Singh
+(5 rows)
+
+-- Plan of the real directory view: caller condition stays above the view (Subquery Scan)
+EXPLAIN (COSTS OFF)
+SELECT last_name FROM "vw_dbms_public_doctor_directory" WHERE pg_temp.peek(last_name);
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Subquery Scan on vw_dbms_public_doctor_directory

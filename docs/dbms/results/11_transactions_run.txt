@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-13T08:52:53Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p10   Role: postgres
+-- Run (UTC): 2026-10-13T09:06:26Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_final   Role: postgres
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/11_transactions.sql
@@ -45,9 +45,9 @@ SAVEPOINT
 INSERT INTO "feedback" ("patientId", "subject", "message", "rating")
 VALUES ('00000000-0000-4000-a000-000000000204', 'TX-2', 'invalid rating', 9);
 ERROR:  new row for relation "feedback" violates check constraint "feedback_rating_range_chk"
-DETAIL:  Failing row contains (9acd99a0-e6e3-4134-94bf-0e06c65fb6fe, 00000000-0000-4000-a000-000000000204, TX-2, invalid rating, 9, f, 2026-10-13 08:52:54.570449+00).
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+DETAIL:  Failing row contains (07a3c885-3513-449c-a7a7-034b13e4b0db, 00000000-0000-4000-a000-000000000204, TX-2, invalid rating, 9, f, 2026-10-13 09:06:26.750562+00).
 SELECT 1 AS this_fails_while_aborted;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK TO SAVEPOINT before_bad_insert;
 ROLLBACK
 SAVEPOINT before_unwanted_change;

@@ -307,6 +307,26 @@ The Prisma comment “rating 1–5” is **documentation only**. There is **no**
 
 ---
 
+## Table: `appointment_status_audit` (added in Review 3)
+
+**Purpose.** This table holds the history of appointment status changes. It is written only by the trigger `trg_appointments_status_audit` and never by the application. See `triggers.md`.
+
+| Column | Type | Null | Notes |
+|--------|------|------|-------|
+| `id` | `BIGSERIAL` | NO | PK |
+| `appointmentId` | `UUID` | NO | FK → `appointments.id`, ON DELETE CASCADE |
+| `oldStatus` | `"AppointmentStatus"` | NO | |
+| `newStatus` | `"AppointmentStatus"` | NO | |
+| `changedAt` | `TIMESTAMPTZ` | NO | default `CURRENT_TIMESTAMP` (transaction time) |
+| `changedBy` | `VARCHAR(63)` | NO | `session_user` (database role, not the Express user) |
+
+- **Indexes:** `appointment_status_audit_appointmentId_changedAt_idx` on `(appointmentId, changedAt)`
+- **Relationships:** N:1 `appointments`. Modelled in Prisma as `AppointmentStatusAudit`.
+
+The appointments indexes changed after Review 1. `appointments_patientId_idx` was replaced by `appointments_patientId_appointmentDate_startTime_idx` (see `indexing.md`).
+
+---
+
 ## Database constraints vs application-level validation
 
 ### Confirmed as database objects (in migration SQL)

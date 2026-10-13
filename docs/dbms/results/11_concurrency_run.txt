@@ -1,5 +1,5 @@
 -- MediCore DBMS concurrency evidence (genuinely concurrent psql sessions)
--- Run (UTC): 2026-10-13T08:53:17Z   Container: medicore_dbms_test   Database: medicore_dbms_p10
+-- Run (UTC): 2026-10-13T09:06:27Z   Container: medicore_dbms_test   Database: medicore_dbms_final
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 
 ==== Scenario 1: A inserts, holds 4 s, COMMITs; B inserts the same slot meanwhile
@@ -9,7 +9,7 @@ SELECT 'A' AS session, pg_backend_pid() AS pid, current_setting('transaction_iso
        to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session | pid |   isolation    |      at      
 ---------+-----+----------------+--------------
- A       | 175 | read committed | 08:53:22.059
+ A       | 748 | read committed | 09:06:29.802
 (1 row)
 
 BEGIN;
@@ -22,7 +22,7 @@ INSERT 0 1
 SELECT 'A inserted, NOT yet committed' AS session_a, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
            session_a           |      at      
 -------------------------------+--------------
- A inserted, NOT yet committed | 08:53:22.113
+ A inserted, NOT yet committed | 09:06:29.807
 (1 row)
 
 SELECT pg_sleep(4);
@@ -36,21 +36,21 @@ COMMIT
 SELECT 'A ended with ' || 'COMMIT' AS session_a, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
       session_a      |      at      
 ---------------------+--------------
- A ended with COMMIT | 08:53:26.123
+ A ended with COMMIT | 09:06:33.832
 (1 row)
 
 ---- monitor (sampled ~1 s after B started)
  pid | wait_event_type |  wait_event   | blocked_by |                                 query                                  
 -----+-----------------+---------------+------------+------------------------------------------------------------------------
- 175 | Timeout         | PgSleep       | {}         | SELECT pg_sleep(4);
- 182 | Lock            | transactionid | {175}      | INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmen
+ 748 | Timeout         | PgSleep       | {}         | SELECT pg_sleep(4);
+ 756 | Lock            | transactionid | {748}      | INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmen
 (2 rows)
 
 ---- session B
 SELECT 'B' AS session, pg_backend_pid() AS pid, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session | pid |      at      
 ---------+-----+--------------
- B       | 182 | 08:53:23.769
+ B       | 756 | 09:06:30.982
 (1 row)
 
 BEGIN;
@@ -59,14 +59,14 @@ INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmentDate", "s
 VALUES ('00000000-0000-4000-a000-0000000005c2', '00000000-0000-4000-a000-000000000202',
         '00000000-0000-4000-a000-000000000306', DATE '2026-12-04', '10:00', '10:30', 'BOOKED',
         'Concurrency demo - session B', now());
+COMMIT;
 ERROR:  duplicate key value violates unique constraint "appointments_active_doctor_slot_unique"
 DETAIL:  Key ("doctorId", "appointmentDate", "startTime")=(00000000-0000-4000-a000-000000000306, 2026-12-04, 10:00) already exists.
-COMMIT;
 ROLLBACK
 SELECT 'B finished' AS session_b, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session_b  |      at      
 ------------+--------------
- B finished | 08:53:26.124
+ B finished | 09:06:33.833
 (1 row)
 
 ---- slot state afterwards
@@ -83,7 +83,7 @@ SELECT 'A' AS session, pg_backend_pid() AS pid, current_setting('transaction_iso
        to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session | pid |   isolation    |      at      
 ---------+-----+----------------+--------------
- A       | 211 | read committed | 08:53:34.835
+ A       | 784 | read committed | 09:06:36.405
 (1 row)
 
 BEGIN;
@@ -96,7 +96,7 @@ INSERT 0 1
 SELECT 'A inserted, NOT yet committed' AS session_a, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
            session_a           |      at      
 -------------------------------+--------------
- A inserted, NOT yet committed | 08:53:34.842
+ A inserted, NOT yet committed | 09:06:36.409
 (1 row)
 
 SELECT pg_sleep(4);
@@ -110,21 +110,21 @@ ROLLBACK
 SELECT 'A ended with ' || 'ROLLBACK' AS session_a, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
        session_a       |      at      
 -----------------------+--------------
- A ended with ROLLBACK | 08:53:38.857
+ A ended with ROLLBACK | 09:06:40.413
 (1 row)
 
 ---- monitor (sampled ~1 s after B started)
  pid | wait_event_type |  wait_event   | blocked_by |                                 query                                  
 -----+-----------------+---------------+------------+------------------------------------------------------------------------
- 211 | Timeout         | PgSleep       | {}         | SELECT pg_sleep(4);
- 218 | Lock            | transactionid | {211}      | INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmen
+ 784 | Timeout         | PgSleep       | {}         | SELECT pg_sleep(4);
+ 791 | Lock            | transactionid | {784}      | INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmen
 (2 rows)
 
 ---- session B
 SELECT 'B' AS session, pg_backend_pid() AS pid, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session | pid |      at      
 ---------+-----+--------------
- B       | 218 | 08:53:35.147
+ B       | 791 | 09:06:37.373
 (1 row)
 
 BEGIN;
@@ -139,7 +139,7 @@ COMMIT
 SELECT 'B finished' AS session_b, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session_b  |      at      
 ------------+--------------
- B finished | 08:53:38.882
+ B finished | 09:06:40.431
 (1 row)
 
 ---- slot state afterwards
@@ -155,7 +155,7 @@ SELECT 'B finished' AS session_b, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS
 SELECT 'A' AS session, pg_backend_pid() AS pid, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session | pid |      at      
 ---------+-----+--------------
- A       | 247 | 08:53:43.102
+ A       | 820 | 09:06:43.181
 (1 row)
 
 BEGIN;
@@ -166,7 +166,7 @@ CALL
 SELECT 'A' AS session, 'cancel succeeded' AS outcome, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session |     outcome      |      at      
 ---------+------------------+--------------
- A       | cancel succeeded | 08:53:43.120
+ A       | cancel succeeded | 09:06:43.190
 (1 row)
 
 SELECT pg_sleep(4);
@@ -180,21 +180,21 @@ COMMIT
 SELECT 'A' AS session, 'transaction ended' AS outcome, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session |      outcome      |      at      
 ---------+-------------------+--------------
- A       | transaction ended | 08:53:47.198
+ A       | transaction ended | 09:06:47.214
 (1 row)
 
 ---- monitor (sampled ~1 s after B started)
  pid | wait_event_type |  wait_event   | blocked_by |                                 query                                  
 -----+-----------------+---------------+------------+------------------------------------------------------------------------
- 247 | Timeout         | PgSleep       | {}         | SELECT pg_sleep(4);
- 254 | Lock            | transactionid | {247}      | CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CA
+ 820 | Timeout         | PgSleep       | {}         | SELECT pg_sleep(4);
+ 827 | Lock            | transactionid | {820}      | CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CA
 (2 rows)
 
 ---- session B
 SELECT 'B' AS session, pg_backend_pid() AS pid, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session | pid |      at      
 ---------+-----+--------------
- B       | 254 | 08:53:44.348
+ B       | 827 | 09:06:44.275
 (1 row)
 
 BEGIN;
@@ -204,15 +204,15 @@ CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CANCELLED_BY
 ERROR:  appointment 00000000-0000-4000-a000-000000000510 is CANCELLED_BY_ADMIN and cannot be cancelled
 CONTEXT:  PL/pgSQL function sp_cancel_appointment(uuid,"AppointmentStatus",text,timestamp with time zone) line 28 at RAISE
 SELECT 'B' AS session, 'cancel succeeded' AS outcome, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SELECT pg_sleep(0);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
 ROLLBACK
 SELECT 'B' AS session, 'transaction ended' AS outcome, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
  session |      outcome      |      at      
 ---------+-------------------+--------------
- B       | transaction ended | 08:53:47.200
+ B       | transaction ended | 09:06:47.219
 (1 row)
 
 ---- appointment 510 and its audit rows
