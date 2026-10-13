@@ -1,0 +1,61 @@
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-11T12:07:13Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p9   Role: medicore_dbms_demo_login
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/10b_security_login_session.sql
+
+SELECT current_user, session_user,
+       (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS is_superuser,
+       pg_has_role(current_user, 'medicore_dbms_reporting', 'MEMBER') AS is_reporting,
+       pg_has_role(current_user, 'medicore_dbms_operator', 'MEMBER') AS is_operator;
+       current_user       |       session_user       | is_superuser | is_reporting | is_operator 
+--------------------------+--------------------------+--------------+--------------+-------------
+ medicore_dbms_demo_login | medicore_dbms_demo_login | f            | t            | f
+(1 row)
+
+SELECT appointment_date, start_time, doctor_name, patient_name, status
+FROM "vw_dbms_appointment_details"
+WHERE status_group = 'ACTIVE'
+ORDER BY appointment_date, start_time
+LIMIT 5;
+ appointment_date | start_time | doctor_name  | patient_name |  status   
+------------------+------------+--------------+--------------+-----------
+ 2026-10-07       | 09:00      | Rohan Mehta  | Amit Joshi   | CONFIRMED
+ 2026-10-12       | 09:20      | Anjali Singh | Kavya Reddy  | CONFIRMED
+ 2026-10-15       | 10:00      | Arjun Sharma | Rahul Kumar  | BOOKED
+ 2026-10-15       | 10:30      | Arjun Sharma | Sneha Patel  | CONFIRMED
+ 2026-10-19       | 14:00      | Arjun Sharma | Suresh Nair  | BOOKED
+(5 rows)
+
+SELECT first_name, last_name, specialization FROM "vw_dbms_public_doctor_directory" ORDER BY last_name;
+ first_name | last_name |      specialization       
+------------+-----------+---------------------------
+ Priya      | Kapoor    | Stroke Medicine
+ Rohan      | Mehta     | Joint Replacement
+ Kavita     | Rao       | General Dermatology
+ Arjun      | Sharma    | Interventional Cardiology
+ Anjali     | Singh     | General Pediatrics
+(5 rows)
+
+SELECT * FROM "patients" LIMIT 1;
+SELECT "email", "passwordHash" FROM "users" LIMIT 1;
+ERROR:  permission denied for table patients
+ERROR:  permission denied for table users
+SELECT * FROM "appointment_status_audit";
+ERROR:  permission denied for table appointment_status_audit
+DELETE FROM "feedback";
+ERROR:  permission denied for table feedback
+CALL sp_respond_to_query('00000000-0000-4000-a000-000000000702', 'CLOSED');
+ERROR:  permission denied for procedure sp_respond_to_query
+CREATE TABLE "login_should_not_create" (id INT);
+SELECT 'restricted session finished' AS status;
+ERROR:  permission denied for schema public
+LINE 1: CREATE TABLE "login_should_not_create" (id INT);
+                     ^
+           status            
+-----------------------------
+ restricted session finished
+(1 row)
+
+EXIT_CODE=0
