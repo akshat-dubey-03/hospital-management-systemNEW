@@ -192,7 +192,11 @@ model Appointment {
   statusAudits AppointmentStatusAudit[]
 
   // Indexes for common query patterns
-  @@index([patientId])
+  // (patientId, appointmentDate, startTime) serves the patient dashboard's
+  // "WHERE patientId = ? ORDER BY appointmentDate, startTime" without a sort,
+  // and its leftmost column still serves plain patientId lookups, so it
+  // replaces the former single-column patientId index (docs/dbms/indexing.md).
+  @@index([patientId, appointmentDate, startTime])
   @@index([doctorId])
   @@index([appointmentDate])
   @@index([doctorId, appointmentDate])
