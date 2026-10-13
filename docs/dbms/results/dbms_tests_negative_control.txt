@@ -1,0 +1,35 @@
+-- Negative control: SQL test suite run against medicore_dbms_p6, a database built only up to
+-- 01, 02, 06, 07 (no triggers/audit table, no security roles grants, no index migration, no synthetic data).
+-- Purpose: show the suite reports FAIL when objects are missing. Run (UTC): 2026-10-13T09:04:12Z
+
+ case_id |     area     | status |                                                         description                                                         |                           detail                           
+---------+--------------+--------+-----------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------
+ T01     | DDL          | FAIL   | tables, enums, FKs, CHECKs, views, routines, triggers and the partial unique index exist                                    | assertion failed: 11 tables
+ T02     | Keys         | PASS   | duplicate primary key is rejected (unique_violation on users_pkey)                                                          | 
+ T03     | Keys         | PASS   | appointment referencing a non-existent patient is rejected (foreign_key_violation)                                          | 
+ T04     | Constraints  | PASS   | rating 0 and end<start rejected by CHECK; NULL rating and boundary values accepted                                          | 
+ T05     | Constraints  | PASS   | deleting a patient with appointments is RESTRICTed; deleting a conversation CASCADEs to its messages                        | 
+ T06     | Constraints  | PASS   | second ACTIVE booking of a slot is rejected; a CANCELLED slot can be rebooked                                               | 
+ T07     | Queries      | PASS   | status counts of the 15 demo appointments; CQ-04 returns only Kumar; BQ-C05 pairs Kumar-Nair                                | 
+ T08     | Views        | PASS   | detail view = 4-table join (0 mismatches); stats view totals = GROUP BY; directory hides inactive doctor                    | 
+ T09     | Functions    | PASS   | fn_doctor_completed_count(Sharma)=2, unknown=NULL; fn_patient_upcoming_count(Kumar, 2026-10-01)=2, unknown=NULL             | 
+ T10     | Procedures   | PASS   | sp_cancel_appointment sets status, trimmed reason, cancelledAt and updatedAt; sp_respond_to_query resolves with respondedAt | 
+ T11     | Procedures   | PASS   | completed/started appointment (55000), unknown id (P0002), non-cancel status (22023), CLOSED query (55000) are refused      | 
+ T12     | Triggers     | FAIL   | status change writes 1 audit row (old/new/session_user); same-status and non-status updates write none                      | relation "appointment_status_audit" does not exist
+ T13     | Triggers     | FAIL   | response set -> respondedAt=now(); unchanged response keeps it; cleared -> NULL; blank -> NULL                              | assertion failed: set
+ T14     | Transactions | FAIL   | failed inner block (savepoint) undoes only its own writes; outer work and its audit row survive until outer undo            | relation "appointment_status_audit" does not exist
+ T15     | Security     | FAIL   | reporting login reads the views; operator role can CALL the cancel procedure                                                | permission denied for view vw_dbms_public_doctor_directory
+ T16     | Security     | PASS   | reporting login is denied base tables, writes and procedures; operator is denied direct UPDATE (insufficient_privilege)     | 
+ T17     | Indexing     | FAIL   | composite patient index exists, old single-column index gone, bounded upcoming query plans an Index Scan with no Sort       | assertion failed: composite exists
+ T18     | Cursors      | PASS   | explicit cursor over active upcoming demo appointments fetches the same rows, in the same order, as the set-based query     | 508,509,510,515,512,511,513,514,
+ T19     | Isolation    | FAIL   | after all cases: demo row counts unchanged and no audit rows (every case cleaned up)                                        | relation "appointment_status_audit" does not exist
+(19 rows)
+
+ passed | failed | total 
+--------+--------+-------
+     12 |      7 |    19
+(1 row)
+
+ERROR:  DBMS SQL test suite: 7 failing case(s)
+CONTEXT:  PL/pgSQL function inline_code_block line 4 at RAISE
+EXIT_CODE=3
