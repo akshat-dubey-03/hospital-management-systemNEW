@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-11T12:07:10Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p9   Role: postgres
+-- Run (UTC): 2026-10-13T09:06:20Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_final   Role: postgres
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/10_security.sql
@@ -24,12 +24,12 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
-NOTICE:  created role medicore_dbms_admin
-NOTICE:  created role medicore_dbms_reporting
-NOTICE:  created role medicore_dbms_operator
-NOTICE:  created role medicore_dbms_demo_login
+NOTICE:  role medicore_dbms_admin already exists (kept)
+NOTICE:  role medicore_dbms_reporting already exists (kept)
+NOTICE:  role medicore_dbms_operator already exists (kept)
 DO
 COMMENT ON ROLE medicore_dbms_admin      IS 'DBMS demo: data administrator — DML on base tables, read-only audit, no DDL.';
+NOTICE:  role medicore_dbms_demo_login already exists (kept)
 COMMENT
 COMMENT ON ROLE medicore_dbms_reporting  IS 'DBMS demo: read-only reporting through vw_dbms_* views only.';
 COMMENT
@@ -72,6 +72,7 @@ GRANT
 GRANT SELECT ON "vw_dbms_appointment_details" TO medicore_dbms_operator;
 GRANT
 GRANT medicore_dbms_reporting TO medicore_dbms_demo_login;
+NOTICE:  role "medicore_dbms_demo_login" is already a member of role "medicore_dbms_reporting"
 GRANT ROLE
 REVOKE medicore_dbms_operator FROM medicore_dbms_demo_login;
 WARNING:  role "medicore_dbms_demo_login" is not a member of role "medicore_dbms_operator"
@@ -202,12 +203,12 @@ SELECT doctor_name, total_appointments FROM "vw_dbms_doctor_appointment_stats" O
 (6 rows)
 
 SELECT "firstName", "phone" FROM "patients";
-UPDATE "appointments" SET "notes" = 'x' WHERE "id" = '00000000-0000-4000-a000-000000000510';
 ERROR:  permission denied for table patients
+UPDATE "appointments" SET "notes" = 'x' WHERE "id" = '00000000-0000-4000-a000-000000000510';
 ERROR:  permission denied for table appointments
 CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CANCELLED_BY_ADMIN');
-RESET ROLE;
 ERROR:  permission denied for procedure sp_cancel_appointment
+RESET ROLE;
 RESET
 GRANT medicore_dbms_operator TO medicore_dbms_demo_login;
 GRANT ROLE
@@ -278,8 +279,8 @@ LINE 1: CREATE TABLE "admin_should_not_create" (id INT);
 ROLLBACK TO SAVEPOINT s;
 ROLLBACK
 DELETE FROM "appointment_status_audit";
-ERROR:  permission denied for table appointment_status_audit
 ROLLBACK TO SAVEPOINT s;
+ERROR:  permission denied for table appointment_status_audit
 ROLLBACK
 ROLLBACK;
 ROLLBACK

@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-11T11:42:16Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p3b
+-- Run (UTC): 2026-10-13T09:06:14Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_final   Role: postgres
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/05_integrity_constraints.sql
@@ -51,7 +51,6 @@ EXCEPTION WHEN check_violation THEN
   RAISE NOTICE 'PASS malformed availability times rejected: %', SQLERRM;
 END $$;
 NOTICE:  PASS dayOfWeek=7 rejected: new row for relation "doctor_availability" violates check constraint "doctor_availability_day_of_week_chk"
-NOTICE:  PASS malformed availability times rejected: new row for relation "doctor_availability" violates check constraint "doctor_availability_time_format_chk"
 DO
 DO $$
 BEGIN
@@ -61,6 +60,7 @@ BEGIN
 EXCEPTION WHEN check_violation THEN
   RAISE NOTICE 'PASS availability end<start rejected: %', SQLERRM;
 END $$;
+NOTICE:  PASS malformed availability times rejected: new row for relation "doctor_availability" violates check constraint "doctor_availability_time_format_chk"
 NOTICE:  PASS availability end<start rejected: new row for relation "doctor_availability" violates check constraint "doctor_availability_time_order_chk"
 DO
 DO $$
@@ -71,6 +71,7 @@ BEGIN
 EXCEPTION WHEN check_violation THEN
   RAISE NOTICE 'PASS slotDurationMinutes=0 rejected: %', SQLERRM;
 END $$;
+NOTICE:  PASS slotDurationMinutes=0 rejected: new row for relation "doctors" violates check constraint "doctors_slot_duration_positive_chk"
 DO
 DO $$
 BEGIN
@@ -80,7 +81,7 @@ BEGIN
 EXCEPTION WHEN check_violation THEN
   RAISE NOTICE 'PASS experienceYears=-1 rejected: %', SQLERRM;
 END $$;
-NOTICE:  PASS slotDurationMinutes=0 rejected: new row for relation "doctors" violates check constraint "doctors_slot_duration_positive_chk"
+NOTICE:  PASS experienceYears=-1 rejected: new row for relation "doctors" violates check constraint "doctors_experience_years_nonnegative_chk"
 DO
 DO $$
 BEGIN
@@ -90,7 +91,6 @@ BEGIN
 EXCEPTION WHEN check_violation THEN
   RAISE NOTICE 'PASS consultationFee=-50 rejected: %', SQLERRM;
 END $$;
-NOTICE:  PASS experienceYears=-1 rejected: new row for relation "doctors" violates check constraint "doctors_experience_years_nonnegative_chk"
 NOTICE:  PASS consultationFee=-50 rejected: new row for relation "doctors" violates check constraint "doctors_consultation_fee_nonnegative_chk"
 DO
 DO $$

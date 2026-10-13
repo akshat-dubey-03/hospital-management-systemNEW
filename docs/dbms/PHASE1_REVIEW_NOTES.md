@@ -39,7 +39,7 @@ Environment: PostgreSQL 15.15 (Debian) in a disposable Docker container `medicor
 | Section B transaction | Inside the transaction: UPDATE 1 ×3, DELETE 1, changes visible. After ROLLBACK: feedback 601 isRead = false, appointment 510 = BOOKED, query 702 = OPEN, feedback 699 still present | `results/02_dml_run*.txt` |
 | `03_sql_queries.sql` | Exit 0, 47 result sets, none empty | `results/03_sql_queries_run.txt` |
 | `04_complex_queries.sql` | Exit 0, 10 result sets, none empty. CQ-04 → Kumar. CQ-05 → Dr Rao only. CQ-09 → 2 rows linked by LAG/LEAD | `results/04_complex_queries_run.txt` |
-| Constraint checks (rolled back) | Rebooking cancelled slot succeeds. A duplicate active slot fails on `appointments_active_doctor_slot_unique`. Deleting a patient or doctor user with appointments fails (RESTRICT). Appointment count unchanged after rollback | `results/05_constraint_checks_run.txt` |
+| Constraint checks (rolled back) | Rebooking cancelled slot succeeds. A duplicate active slot fails on `appointments_active_doctor_slot_unique`. Deleting a patient or doctor user with appointments fails (RESTRICT). Appointment count unchanged after rollback | `results/dbms_tests_run.txt` (cases T05, T06; the original ad-hoc capture was superseded by the test suite) |
 
 ## 4. Known limitations and open items
 
