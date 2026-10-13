@@ -1,0 +1,246 @@
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-13T08:57:13Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p11b   Role: postgres
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/12_indexing_explain.sql
+
+Timing is off.
+SET jit = off;
+SET
+SET max_parallel_workers_per_gather = 0;
+SET
+CREATE INDEX IF NOT EXISTS "appointments_patientId_idx" ON "appointments"("patientId");
+CREATE INDEX
+DROP INDEX IF EXISTS "appointments_patientId_appointmentDate_startTime_idx";
+DROP INDEX
+INSERT INTO "departments" ("id", "name", "description")
+VALUES ('00000000-0000-4000-c000-000000000001', 'Synthetic Load', 'EXPLAIN test data only')
+ON CONFLICT ("id") DO NOTHING;
+INSERT 0 1
+INSERT INTO "users" ("id", "email", "passwordHash", "role", "updatedAt")
+SELECT ('00000000-0000-4000-c100-' || lpad(n::text, 12, '0'))::uuid,
+       'synthetic.doctor.' || n || '@medicore.dbms.example', 'not-a-password', 'DOCTOR'::"Role", now()
+FROM generate_series(1, 40) n
+UNION ALL
+SELECT ('00000000-0000-4000-c200-' || lpad(n::text, 12, '0'))::uuid,
+       'synthetic.patient.' || n || '@medicore.dbms.example', 'not-a-password', 'PATIENT'::"Role", now()
+FROM generate_series(1, 2000) n
+ON CONFLICT ("id") DO NOTHING;
+INSERT 0 2040
+INSERT INTO "doctors" ("id", "userId", "departmentId", "firstName", "lastName",
+                       "specialization", "qualification", "slotDurationMinutes", "updatedAt")
+SELECT ('00000000-0000-4000-c110-' || lpad(n::text, 12, '0'))::uuid,
+       ('00000000-0000-4000-c100-' || lpad(n::text, 12, '0'))::uuid,
+       '00000000-0000-4000-c000-000000000001', 'Synthetic', 'Doctor ' || n,
+       'Load testing', 'n/a', 15, now()
+FROM generate_series(1, 40) n
+ON CONFLICT ("id") DO NOTHING;
+INSERT 0 40
+INSERT INTO "patients" ("id", "userId", "firstName", "lastName", "updatedAt")
+SELECT ('00000000-0000-4000-c210-' || lpad(n::text, 12, '0'))::uuid,
+       ('00000000-0000-4000-c200-' || lpad(n::text, 12, '0'))::uuid,
+       'Synthetic', 'Patient ' || n, now()
+FROM generate_series(1, 2000) n
+ON CONFLICT ("id") DO NOTHING;
+INSERT 0 2000
+INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmentDate",
+                            "startTime", "endTime", "status", "updatedAt")
+SELECT md5('synthetic-appt-' || d || '-' || day || '-' || slot)::uuid,
+       ('00000000-0000-4000-c210-' || lpad((((d * 7919 + day * 31 + slot * 17) % 2000) + 1)::text, 12, '0'))::uuid,
+       ('00000000-0000-4000-c110-' || lpad(d::text, 12, '0'))::uuid,
+       DATE '2026-01-05' + day,
+       to_char(TIME '09:00' + slot * INTERVAL '15 minutes', 'HH24:MI'),
+       to_char(TIME '09:15' + slot * INTERVAL '15 minutes', 'HH24:MI'),
+       (CASE WHEN (d + day + slot) % 10 = 0 THEN 'CANCELLED_BY_PATIENT'
+             WHEN DATE '2026-01-05' + day < DATE '2026-10-10' THEN 'COMPLETED'
+             ELSE 'BOOKED' END)::"AppointmentStatus",
+       now()
+FROM generate_series(1, 40) d, generate_series(0, 299) day, generate_series(0, 15) slot
+ON CONFLICT ("id") DO NOTHING;
+INSERT 0 192000
+ANALYZE "appointments";
+ANALYZE
+ANALYZE "patients";
+ANALYZE
+SELECT (SELECT COUNT(*) FROM "appointments") AS appointments,
+       (SELECT COUNT(DISTINCT "patientId") FROM "appointments") AS patients_with_appointments,
+       (SELECT COUNT(*) FROM "appointments"
+        WHERE "patientId" = '00000000-0000-4000-c210-000000000001') AS target_patient_rows;
+ appointments | patients_with_appointments | target_patient_rows 
+--------------+----------------------------+---------------------
+       192015 |                       2006 |                  98
+(1 row)
+
+SELECT indexname, indexdef, pg_size_pretty(pg_relation_size(format('%I', indexname)::regclass)) AS size
+FROM pg_indexes WHERE tablename = 'appointments' ORDER BY indexname;
+                 indexname                 |                                                                                                                                                   indexdef                                                                                                                                                   |  size   
+-------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------
+ appointments_active_doctor_slot_unique    | CREATE UNIQUE INDEX appointments_active_doctor_slot_unique ON public.appointments USING btree ("doctorId", "appointmentDate", "startTime") WHERE (status <> ALL (ARRAY['CANCELLED_BY_PATIENT'::"AppointmentStatus", 'CANCELLED_BY_DOCTOR'::"AppointmentStatus", 'CANCELLED_BY_ADMIN'::"AppointmentStatus"])) | 15 MB
+ appointments_appointmentDate_idx          | CREATE INDEX "appointments_appointmentDate_idx" ON public.appointments USING btree ("appointmentDate")                                                                                                                                                                                                       | 1216 kB
+ appointments_doctorId_appointmentDate_idx | CREATE INDEX "appointments_doctorId_appointmentDate_idx" ON public.appointments USING btree ("doctorId", "appointmentDate")                                                                                                                                                                                  | 2904 kB
+ appointments_doctorId_idx                 | CREATE INDEX "appointments_doctorId_idx" ON public.appointments USING btree ("doctorId")                                                                                                                                                                                                                     | 1304 kB
+ appointments_patientId_idx                | CREATE INDEX "appointments_patientId_idx" ON public.appointments USING btree ("patientId")                                                                                                                                                                                                                   | 1552 kB
+ appointments_pkey                         | CREATE UNIQUE INDEX appointments_pkey ON public.appointments USING btree (id)                                                                                                                                                                                                                                | 8192 kB
+(6 rows)
+
+SELECT COUNT(*) FROM "appointments" WHERE "patientId" = '00000000-0000-4000-c210-000000000001';
+ count 
+-------
+    98
+(1 row)
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT "id", "appointmentDate", "startTime", "endTime", "status", "doctorId"
+FROM "appointments"
+WHERE "patientId" = '00000000-0000-4000-c210-000000000001'
+ORDER BY "appointmentDate", "startTime";
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=335.04..335.28 rows=95 width=52) (actual time=0.241..0.249 rows=98 loops=1)
+   Sort Key: "appointmentDate", "startTime"
+   Sort Method: quicksort  Memory: 34kB
+   Buffers: shared hit=100
+   ->  Bitmap Heap Scan on appointments  (cost=5.03..331.92 rows=95 width=52) (actual time=0.028..0.168 rows=98 loops=1)
+         Recheck Cond: ("patientId" = '00000000-0000-4000-c210-000000000001'::uuid)
+         Heap Blocks: exact=98
+         Buffers: shared hit=100
+         ->  Bitmap Index Scan on "appointments_patientId_idx"  (cost=0.00..5.01 rows=95 width=0) (actual time=0.010..0.010 rows=98 loops=1)
+               Index Cond: ("patientId" = '00000000-0000-4000-c210-000000000001'::uuid)
+               Buffers: shared hit=2
+ Planning:
+   Buffers: shared hit=23
+ Planning Time: 0.421 ms
+ Execution Time: 0.410 ms
+(15 rows)
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT "id", "appointmentDate", "startTime", "status"
+FROM "appointments"
+WHERE "patientId" = '00000000-0000-4000-c210-000000000001'
+  AND "appointmentDate" >= DATE '2026-10-10'
+ORDER BY "appointmentDate", "startTime"
+LIMIT 5;
+                                                                              QUERY PLAN                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=190.71..190.72 rows=5 width=30) (actual time=1.027..1.031 rows=5 loops=1)
+   Buffers: shared hit=22
+   ->  Sort  (cost=190.71..190.73 rows=7 width=30) (actual time=1.025..1.027 rows=5 loops=1)
+         Sort Key: "appointmentDate", "startTime"
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=22
+         ->  Bitmap Heap Scan on appointments  (cost=163.53..190.61 rows=7 width=30) (actual time=0.998..1.013 rows=8 loops=1)
+               Recheck Cond: (("patientId" = '00000000-0000-4000-c210-000000000001'::uuid) AND ("appointmentDate" >= '2026-10-10'::date))
+               Heap Blocks: exact=8
+               Buffers: shared hit=22
+               ->  BitmapAnd  (cost=163.53..163.53 rows=7 width=0) (actual time=0.989..0.990 rows=0 loops=1)
+                     Buffers: shared hit=14
+                     ->  Bitmap Index Scan on "appointments_patientId_idx"  (cost=0.00..5.01 rows=95 width=0) (actual time=0.015..0.015 rows=98 loops=1)
+                           Index Cond: ("patientId" = '00000000-0000-4000-c210-000000000001'::uuid)
+                           Buffers: shared hit=2
+                     ->  Bitmap Index Scan on "appointments_appointmentDate_idx"  (cost=0.00..158.27 rows=14663 width=0) (actual time=0.959..0.959 rows=14088 loops=1)
+                           Index Cond: ("appointmentDate" >= '2026-10-10'::date)
+                           Buffers: shared hit=12
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.275 ms
+ Execution Time: 1.102 ms
+(22 rows)
+
+CREATE INDEX "appointments_patientId_appointmentDate_startTime_idx"
+  ON "appointments"("patientId", "appointmentDate", "startTime");
+CREATE INDEX
+DROP INDEX "appointments_patientId_idx";
+DROP INDEX
+ANALYZE "appointments";
+ANALYZE
+SELECT indexname, pg_size_pretty(pg_relation_size(format('%I', indexname)::regclass)) AS size
+FROM pg_indexes WHERE tablename = 'appointments' ORDER BY indexname;
+                      indexname                       |  size   
+------------------------------------------------------+---------
+ appointments_active_doctor_slot_unique               | 15 MB
+ appointments_appointmentDate_idx                     | 1216 kB
+ appointments_doctorId_appointmentDate_idx            | 2904 kB
+ appointments_doctorId_idx                            | 1304 kB
+ appointments_patientId_appointmentDate_startTime_idx | 9336 kB
+ appointments_pkey                                    | 8192 kB
+(6 rows)
+
+SELECT COUNT(*) FROM "appointments" WHERE "patientId" = '00000000-0000-4000-c210-000000000001';
+ count 
+-------
+    98
+(1 row)
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT "id", "appointmentDate", "startTime", "endTime", "status", "doctorId"
+FROM "appointments"
+WHERE "patientId" = '00000000-0000-4000-c210-000000000001'
+ORDER BY "appointmentDate", "startTime";
+                                                                              QUERY PLAN                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=335.17..335.41 rows=95 width=52) (actual time=0.258..0.268 rows=98 loops=1)
+   Sort Key: "appointmentDate", "startTime"
+   Sort Method: quicksort  Memory: 34kB
+   Buffers: shared hit=101
+   ->  Bitmap Heap Scan on appointments  (cost=5.16..332.05 rows=95 width=52) (actual time=0.043..0.205 rows=98 loops=1)
+         Recheck Cond: ("patientId" = '00000000-0000-4000-c210-000000000001'::uuid)
+         Heap Blocks: exact=98
+         Buffers: shared hit=101
+         ->  Bitmap Index Scan on "appointments_patientId_appointmentDate_startTime_idx"  (cost=0.00..5.13 rows=95 width=0) (actual time=0.019..0.019 rows=98 loops=1)
+               Index Cond: ("patientId" = '00000000-0000-4000-c210-000000000001'::uuid)
+               Buffers: shared hit=3
+ Planning:
+   Buffers: shared hit=28
+ Planning Time: 0.252 ms
+ Execution Time: 0.305 ms
+(15 rows)
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT "id", "appointmentDate", "startTime", "status"
+FROM "appointments"
+WHERE "patientId" = '00000000-0000-4000-c210-000000000001'
+  AND "appointmentDate" >= DATE '2026-10-10'
+ORDER BY "appointmentDate", "startTime"
+LIMIT 5;
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..23.38 rows=5 width=30) (actual time=0.018..0.078 rows=5 loops=1)
+   Buffers: shared hit=8
+   ->  Index Scan using "appointments_patientId_appointmentDate_startTime_idx" on appointments  (cost=0.42..32.56 rows=7 width=30) (actual time=0.016..0.073 rows=5 loops=1)
+         Index Cond: (("patientId" = '00000000-0000-4000-c210-000000000001'::uuid) AND ("appointmentDate" >= '2026-10-10'::date))
+         Buffers: shared hit=8
+ Planning Time: 0.125 ms
+ Execution Time: 0.099 ms
+(7 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT 1 FROM "appointments" WHERE "patientId" = '00000000-0000-4000-c210-000000000002';
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Bitmap Heap Scan on appointments
+   Recheck Cond: ("patientId" = '00000000-0000-4000-c210-000000000002'::uuid)
+   ->  Bitmap Index Scan on "appointments_patientId_appointmentDate_startTime_idx"
+         Index Cond: ("patientId" = '00000000-0000-4000-c210-000000000002'::uuid)
+(4 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM "appointments" WHERE "appointmentDate" = DATE '2026-03-02';
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using "appointments_appointmentDate_idx" on appointments
+         Index Cond: ("appointmentDate" = '2026-03-02'::date)
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM "appointments" WHERE "status" IN ('BOOKED', 'CONFIRMED');
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  Seq Scan on appointments (actual rows=12680 loops=1)
+         Filter: (status = ANY ('{BOOKED,CONFIRMED}'::"AppointmentStatus"[]))
+         Rows Removed by Filter: 179335
+(4 rows)
+
+EXIT_CODE=0

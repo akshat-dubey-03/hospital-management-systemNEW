@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-13T08:52:44Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p10   Role: postgres
+-- Run (UTC): 2026-10-13T08:57:10Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p11b   Role: postgres
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/01_ddl.sql
@@ -159,7 +159,8 @@ CREATE INDEX
 CREATE UNIQUE INDEX "doctor_availability_doctorId_dayOfWeek_startTime_key"
   ON "doctor_availability"("doctorId", "dayOfWeek", "startTime");
 CREATE INDEX
-CREATE INDEX "appointments_patientId_idx" ON "appointments"("patientId");
+CREATE INDEX "appointments_patientId_appointmentDate_startTime_idx"
+  ON "appointments"("patientId", "appointmentDate", "startTime");
 CREATE INDEX
 CREATE INDEX "appointments_doctorId_idx" ON "appointments"("doctorId");
 CREATE INDEX

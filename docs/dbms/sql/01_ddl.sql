@@ -5,6 +5,7 @@
 --   backend/prisma/schema.prisma
 --   backend/prisma/migrations/20260830194500_appointment_workflow_foundation/migration.sql
 --   backend/prisma/migrations/20261011100000_dbms_integrity_checks/migration.sql
+--   backend/prisma/migrations/20261011140000_dbms_patient_schedule_index/migration.sql
 --
 -- Execute against a dedicated EMPTY development database only.
 -- Do not run against the Prisma-managed application database (medicore_db).
@@ -197,7 +198,10 @@ CREATE UNIQUE INDEX "doctor_availability_doctorId_dayOfWeek_startTime_key"
 -- Non-unique indexes
 -- -----------------------------------------------------------------------------
 
-CREATE INDEX "appointments_patientId_idx" ON "appointments"("patientId");
+-- Composite (patientId, appointmentDate, startTime) replaced the single-column
+-- patientId index after Review 1 (migration 20261011140000_dbms_patient_schedule_index).
+CREATE INDEX "appointments_patientId_appointmentDate_startTime_idx"
+  ON "appointments"("patientId", "appointmentDate", "startTime");
 
 CREATE INDEX "appointments_doctorId_idx" ON "appointments"("doctorId");
 
