@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-11T12:07:07Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p9   Role: postgres
+-- Run (UTC): 2026-10-13T08:52:48Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p10   Role: postgres
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/06_views.sql
@@ -214,7 +214,6 @@ BEGIN
 EXCEPTION WHEN object_not_in_prerequisite_state OR feature_not_supported THEN
   RAISE NOTICE 'PASS view is read-only: %', SQLERRM;
 END $$;
-NOTICE:  PASS view is read-only: cannot update view "vw_dbms_public_doctor_directory"
 DO
 CREATE FUNCTION pg_temp.peek(name TEXT) RETURNS BOOLEAN
 LANGUAGE plpgsql COST 0.0000001 AS $$
@@ -222,6 +221,7 @@ BEGIN
   RAISE NOTICE 'peek() saw doctor: %', name;
   RETURN TRUE;
 END $$;
+NOTICE:  PASS view is read-only: cannot update view "vw_dbms_public_doctor_directory"
 CREATE FUNCTION
 CREATE TEMP VIEW directory_plain AS
 SELECT d."lastName" AS last_name

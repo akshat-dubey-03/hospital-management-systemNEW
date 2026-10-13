@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-11T12:07:09Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p9   Role: postgres
+-- Run (UTC): 2026-10-13T08:52:52Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p10   Role: postgres
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/08_triggers.sql
@@ -117,10 +117,10 @@ WHERE "id" IN ('00000000-0000-4000-a000-000000000702', '00000000-0000-4000-a000-
 ORDER BY "subject";
                subject               |  status  |             adminResponse              |          respondedAt          | responded_now 
 -------------------------------------+----------+----------------------------------------+-------------------------------+---------------
- How do I reschedule an appointment? | RESOLVED | Edited answer.                         | 2026-10-11 12:07:10.348173+00 | t
+ How do I reschedule an appointment? | RESOLVED | Edited answer.                         | 2026-10-13 08:52:52.800468+00 | t
  Invoice copy                        | CLOSED   | Invoice copy sent to registered email. | 2026-09-20 12:00:00+00        | f
  Request for visit notes             | RESOLVED |                                        |                               | 
- Saturday availability               | OPEN     | Weekday slots only.                    | 2026-10-11 12:07:10.348173+00 | t
+ Saturday availability               | OPEN     | Weekday slots only.                    | 2026-10-13 08:52:52.800468+00 | t
  T-A1                                | OPEN     |                                        |                               | 
 (5 rows)
 

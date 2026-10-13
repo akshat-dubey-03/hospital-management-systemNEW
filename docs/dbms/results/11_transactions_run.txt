@@ -1,0 +1,181 @@
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-13T08:52:53Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p10   Role: postgres
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/11_transactions.sql
+
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ read committed
+(1 row)
+
+SELECT "id", "subject", "isRead" FROM "feedback" WHERE "id" = '00000000-0000-4000-a000-000000000603';
+                  id                  |         subject          | isRead 
+--------------------------------------+--------------------------+--------
+ 00000000-0000-4000-a000-000000000603 | Suggestion for reminders | f
+(1 row)
+
+BEGIN;
+BEGIN
+UPDATE "feedback" SET "isRead" = TRUE WHERE "id" = '00000000-0000-4000-a000-000000000603';
+UPDATE 1
+COMMIT;
+COMMIT
+SELECT "id", "subject", "isRead" FROM "feedback" WHERE "id" = '00000000-0000-4000-a000-000000000603';
+                  id                  |         subject          | isRead 
+--------------------------------------+--------------------------+--------
+ 00000000-0000-4000-a000-000000000603 | Suggestion for reminders | t
+(1 row)
+
+SELECT "id", "status" FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000702';
+                  id                  | status 
+--------------------------------------+--------
+ 00000000-0000-4000-a000-000000000702 | OPEN
+(1 row)
+
+BEGIN;
+BEGIN
+UPDATE "queries" SET "status" = 'IN_PROGRESS', "updatedAt" = now()
+WHERE "id" = '00000000-0000-4000-a000-000000000702';
+UPDATE 1
+SAVEPOINT before_bad_insert;
+SAVEPOINT
+INSERT INTO "feedback" ("patientId", "subject", "message", "rating")
+VALUES ('00000000-0000-4000-a000-000000000204', 'TX-2', 'invalid rating', 9);
+ERROR:  new row for relation "feedback" violates check constraint "feedback_rating_range_chk"
+DETAIL:  Failing row contains (9acd99a0-e6e3-4134-94bf-0e06c65fb6fe, 00000000-0000-4000-a000-000000000204, TX-2, invalid rating, 9, f, 2026-10-13 08:52:54.570449+00).
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+SELECT 1 AS this_fails_while_aborted;
+ROLLBACK TO SAVEPOINT before_bad_insert;
+ROLLBACK
+SAVEPOINT before_unwanted_change;
+SAVEPOINT
+DELETE FROM "chat_messages" WHERE "conversationId" = '00000000-0000-4000-a000-000000000801';
+DELETE 4
+SELECT COUNT(*) AS messages_after_delete FROM "chat_messages"
+WHERE "conversationId" = '00000000-0000-4000-a000-000000000801';
+ messages_after_delete 
+-----------------------
+                     0
+(1 row)
+
+ROLLBACK TO SAVEPOINT before_unwanted_change;
+ROLLBACK
+COMMIT;
+COMMIT
+SELECT (SELECT "status" FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000702') AS query_702_status,
+       (SELECT COUNT(*) FROM "feedback" WHERE "subject" = 'TX-2') AS tx2_feedback_rows,
+       (SELECT COUNT(*) FROM "chat_messages"
+        WHERE "conversationId" = '00000000-0000-4000-a000-000000000801') AS conversation_801_messages;
+ query_702_status | tx2_feedback_rows | conversation_801_messages 
+------------------+-------------------+---------------------------
+ IN_PROGRESS      |                 0 |                         4
+(1 row)
+
+SELECT (SELECT COUNT(*) FROM "appointments") AS appointments_before,
+       (SELECT COUNT(*) FROM "appointments" WHERE "status" = 'BOOKED') AS booked_before;
+ appointments_before | booked_before 
+---------------------+---------------
+                  15 |             5
+(1 row)
+
+BEGIN;
+BEGIN
+UPDATE "appointments" SET "status" = 'CONFIRMED', "updatedAt" = now() WHERE "status" = 'BOOKED';
+UPDATE 5
+DELETE FROM "appointments" WHERE "status" = 'CANCELLED_BY_ADMIN';
+DELETE 1
+SELECT (SELECT COUNT(*) FROM "appointments") AS appointments_inside,
+       (SELECT COUNT(*) FROM "appointments" WHERE "status" = 'BOOKED') AS booked_inside,
+       (SELECT COUNT(*) FROM "appointment_status_audit") AS audit_rows_inside;
+ appointments_inside | booked_inside | audit_rows_inside 
+---------------------+---------------+-------------------
+                  14 |             0 |                 5
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+SELECT (SELECT COUNT(*) FROM "appointments") AS appointments_after,
+       (SELECT COUNT(*) FROM "appointments" WHERE "status" = 'BOOKED') AS booked_after,
+       (SELECT COUNT(*) FROM "appointment_status_audit") AS audit_rows_after;
+ appointments_after | booked_after | audit_rows_after 
+--------------------+--------------+------------------
+                 15 |            5 |                0
+(1 row)
+
+BEGIN;
+BEGIN
+CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000511', 'CANCELLED_BY_DOCTOR',
+                           'Doctor on leave', TIMESTAMPTZ '2026-10-10 09:00+00');
+CALL
+SELECT "status" AS appt_511_inside FROM "appointments" WHERE "id" = '00000000-0000-4000-a000-000000000511';
+   appt_511_inside   
+---------------------
+ CANCELLED_BY_DOCTOR
+(1 row)
+
+CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000501', 'CANCELLED_BY_DOCTOR',
+                           'Doctor on leave', TIMESTAMPTZ '2026-10-10 09:00+00');
+ERROR:  appointment 00000000-0000-4000-a000-000000000501 is COMPLETED and cannot be cancelled
+CONTEXT:  PL/pgSQL function sp_cancel_appointment(uuid,"AppointmentStatus",text,timestamp with time zone) line 28 at RAISE
+COMMIT;
+ROLLBACK
+SELECT "status" AS appt_511_after, "cancelledAt" FROM "appointments"
+WHERE "id" = '00000000-0000-4000-a000-000000000511';
+ appt_511_after | cancelledAt 
+----------------+-------------
+ BOOKED         | 
+(1 row)
+
+BEGIN;
+BEGIN
+INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmentDate", "startTime", "endTime", "status", "updatedAt")
+VALUES ('00000000-0000-4000-a000-0000000005d1', '00000000-0000-4000-a000-000000000203',
+        '00000000-0000-4000-a000-000000000301', DATE '2026-09-14', '09:00', '09:30', 'BOOKED', now());
+INSERT 0 1
+SAVEPOINT s;
+SAVEPOINT
+INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmentDate", "startTime", "endTime", "status", "updatedAt")
+VALUES ('00000000-0000-4000-a000-0000000005d2', '00000000-0000-4000-a000-000000000204',
+        '00000000-0000-4000-a000-000000000301', DATE '2026-09-14', '09:00', '09:30', 'BOOKED', now());
+ERROR:  duplicate key value violates unique constraint "appointments_active_doctor_slot_unique"
+DETAIL:  Key ("doctorId", "appointmentDate", "startTime")=(00000000-0000-4000-a000-000000000301, 2026-09-14, 09:00) already exists.
+ROLLBACK TO SAVEPOINT s;
+ROLLBACK
+INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmentDate", "startTime", "endTime", "status", "updatedAt")
+VALUES ('00000000-0000-4000-a000-0000000005d3', '00000000-0000-4000-a000-000000000204',
+        '00000000-0000-4000-a000-000000000301', DATE '2026-09-14', '09:15', '09:45', 'BOOKED', now());
+INSERT 0 1
+SELECT "startTime", "endTime", "status" FROM "appointments"
+WHERE "doctorId" = '00000000-0000-4000-a000-000000000301' AND "appointmentDate" = DATE '2026-09-14'
+ORDER BY "startTime", "status";
+ startTime | endTime |       status        
+-----------+---------+---------------------
+ 09:00     | 09:30   | BOOKED
+ 09:00     | 09:30   | CANCELLED_BY_DOCTOR
+ 09:15     | 09:45   | BOOKED
+(3 rows)
+
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE "feedback" SET "isRead" = FALSE WHERE "id" = '00000000-0000-4000-a000-000000000603';
+UPDATE 1
+UPDATE "queries"  SET "status" = 'OPEN', "updatedAt" = TIMESTAMPTZ '2026-10-01 11:00:00+00'
+WHERE "id" = '00000000-0000-4000-a000-000000000702';
+UPDATE 1
+COMMIT;
+COMMIT
+SELECT (SELECT "isRead" FROM "feedback" WHERE "id" = '00000000-0000-4000-a000-000000000603') AS feedback_603_isread,
+       (SELECT "status" FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000702') AS query_702,
+       (SELECT "status" FROM "appointments" WHERE "id" = '00000000-0000-4000-a000-000000000511') AS appt_511,
+       (SELECT COUNT(*) FROM "appointments") AS appointments;
+ feedback_603_isread | query_702 | appt_511 | appointments 
+---------------------+-----------+----------+--------------
+ f                   | OPEN      | BOOKED   |           15
+(1 row)
+
+EXIT_CODE=0

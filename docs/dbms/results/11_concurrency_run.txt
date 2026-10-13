@@ -1,0 +1,231 @@
+-- MediCore DBMS concurrency evidence (genuinely concurrent psql sessions)
+-- Run (UTC): 2026-10-13T08:53:17Z   Container: medicore_dbms_test   Database: medicore_dbms_p10
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+
+==== Scenario 1: A inserts, holds 4 s, COMMITs; B inserts the same slot meanwhile
+     expected: B blocks until A commits, then unique_violation (appointments_active_doctor_slot_unique)
+---- session A
+SELECT 'A' AS session, pg_backend_pid() AS pid, current_setting('transaction_isolation') AS isolation,
+       to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session | pid |   isolation    |      at      
+---------+-----+----------------+--------------
+ A       | 175 | read committed | 08:53:22.059
+(1 row)
+
+BEGIN;
+BEGIN
+INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmentDate", "startTime", "endTime", "status", "reasonForVisit", "updatedAt")
+VALUES ('00000000-0000-4000-a000-0000000005c1', '00000000-0000-4000-a000-000000000201',
+        '00000000-0000-4000-a000-000000000306', DATE '2026-12-04', '10:00', '10:30', 'BOOKED',
+        'Concurrency demo - session A', now());
+INSERT 0 1
+SELECT 'A inserted, NOT yet committed' AS session_a, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+           session_a           |      at      
+-------------------------------+--------------
+ A inserted, NOT yet committed | 08:53:22.113
+(1 row)
+
+SELECT pg_sleep(4);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+COMMIT;
+COMMIT
+SELECT 'A ended with ' || 'COMMIT' AS session_a, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+      session_a      |      at      
+---------------------+--------------
+ A ended with COMMIT | 08:53:26.123
+(1 row)
+
+---- monitor (sampled ~1 s after B started)
+ pid | wait_event_type |  wait_event   | blocked_by |                                 query                                  
+-----+-----------------+---------------+------------+------------------------------------------------------------------------
+ 175 | Timeout         | PgSleep       | {}         | SELECT pg_sleep(4);
+ 182 | Lock            | transactionid | {175}      | INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmen
+(2 rows)
+
+---- session B
+SELECT 'B' AS session, pg_backend_pid() AS pid, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session | pid |      at      
+---------+-----+--------------
+ B       | 182 | 08:53:23.769
+(1 row)
+
+BEGIN;
+BEGIN
+INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmentDate", "startTime", "endTime", "status", "reasonForVisit", "updatedAt")
+VALUES ('00000000-0000-4000-a000-0000000005c2', '00000000-0000-4000-a000-000000000202',
+        '00000000-0000-4000-a000-000000000306', DATE '2026-12-04', '10:00', '10:30', 'BOOKED',
+        'Concurrency demo - session B', now());
+ERROR:  duplicate key value violates unique constraint "appointments_active_doctor_slot_unique"
+DETAIL:  Key ("doctorId", "appointmentDate", "startTime")=(00000000-0000-4000-a000-000000000306, 2026-12-04, 10:00) already exists.
+COMMIT;
+ROLLBACK
+SELECT 'B finished' AS session_b, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session_b  |      at      
+------------+--------------
+ B finished | 08:53:26.124
+(1 row)
+
+---- slot state afterwards
+ fixture |        reasonForVisit        | status 
+---------+------------------------------+--------
+ 5c1     | Concurrency demo - session A | BOOKED
+(1 row)
+
+
+==== Scenario 2: same, but A ROLLs BACK
+     expected: B blocks until A rolls back, then B's insert succeeds
+---- session A
+SELECT 'A' AS session, pg_backend_pid() AS pid, current_setting('transaction_isolation') AS isolation,
+       to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session | pid |   isolation    |      at      
+---------+-----+----------------+--------------
+ A       | 211 | read committed | 08:53:34.835
+(1 row)
+
+BEGIN;
+BEGIN
+INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmentDate", "startTime", "endTime", "status", "reasonForVisit", "updatedAt")
+VALUES ('00000000-0000-4000-a000-0000000005c1', '00000000-0000-4000-a000-000000000201',
+        '00000000-0000-4000-a000-000000000306', DATE '2026-12-04', '10:00', '10:30', 'BOOKED',
+        'Concurrency demo - session A', now());
+INSERT 0 1
+SELECT 'A inserted, NOT yet committed' AS session_a, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+           session_a           |      at      
+-------------------------------+--------------
+ A inserted, NOT yet committed | 08:53:34.842
+(1 row)
+
+SELECT pg_sleep(4);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+SELECT 'A ended with ' || 'ROLLBACK' AS session_a, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+       session_a       |      at      
+-----------------------+--------------
+ A ended with ROLLBACK | 08:53:38.857
+(1 row)
+
+---- monitor (sampled ~1 s after B started)
+ pid | wait_event_type |  wait_event   | blocked_by |                                 query                                  
+-----+-----------------+---------------+------------+------------------------------------------------------------------------
+ 211 | Timeout         | PgSleep       | {}         | SELECT pg_sleep(4);
+ 218 | Lock            | transactionid | {211}      | INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmen
+(2 rows)
+
+---- session B
+SELECT 'B' AS session, pg_backend_pid() AS pid, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session | pid |      at      
+---------+-----+--------------
+ B       | 218 | 08:53:35.147
+(1 row)
+
+BEGIN;
+BEGIN
+INSERT INTO "appointments" ("id", "patientId", "doctorId", "appointmentDate", "startTime", "endTime", "status", "reasonForVisit", "updatedAt")
+VALUES ('00000000-0000-4000-a000-0000000005c2', '00000000-0000-4000-a000-000000000202',
+        '00000000-0000-4000-a000-000000000306', DATE '2026-12-04', '10:00', '10:30', 'BOOKED',
+        'Concurrency demo - session B', now());
+INSERT 0 1
+COMMIT;
+COMMIT
+SELECT 'B finished' AS session_b, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session_b  |      at      
+------------+--------------
+ B finished | 08:53:38.882
+(1 row)
+
+---- slot state afterwards
+ fixture |        reasonForVisit        | status 
+---------+------------------------------+--------
+ 5c2     | Concurrency demo - session B | BOOKED
+(1 row)
+
+
+==== Scenario 3: two sessions cancel appointment 510 via sp_cancel_appointment
+     expected: B waits on A's row lock (FOR UPDATE), then is refused (55000) because A already cancelled
+---- session A
+SELECT 'A' AS session, pg_backend_pid() AS pid, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session | pid |      at      
+---------+-----+--------------
+ A       | 247 | 08:53:43.102
+(1 row)
+
+BEGIN;
+BEGIN
+CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CANCELLED_BY_ADMIN',
+                           'Concurrency demo ' || 'A', TIMESTAMPTZ '2026-10-10 09:00+00');
+CALL
+SELECT 'A' AS session, 'cancel succeeded' AS outcome, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session |     outcome      |      at      
+---------+------------------+--------------
+ A       | cancel succeeded | 08:53:43.120
+(1 row)
+
+SELECT pg_sleep(4);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+COMMIT;
+COMMIT
+SELECT 'A' AS session, 'transaction ended' AS outcome, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session |      outcome      |      at      
+---------+-------------------+--------------
+ A       | transaction ended | 08:53:47.198
+(1 row)
+
+---- monitor (sampled ~1 s after B started)
+ pid | wait_event_type |  wait_event   | blocked_by |                                 query                                  
+-----+-----------------+---------------+------------+------------------------------------------------------------------------
+ 247 | Timeout         | PgSleep       | {}         | SELECT pg_sleep(4);
+ 254 | Lock            | transactionid | {247}      | CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CA
+(2 rows)
+
+---- session B
+SELECT 'B' AS session, pg_backend_pid() AS pid, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session | pid |      at      
+---------+-----+--------------
+ B       | 254 | 08:53:44.348
+(1 row)
+
+BEGIN;
+BEGIN
+CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CANCELLED_BY_ADMIN',
+                           'Concurrency demo ' || 'B', TIMESTAMPTZ '2026-10-10 09:00+00');
+ERROR:  appointment 00000000-0000-4000-a000-000000000510 is CANCELLED_BY_ADMIN and cannot be cancelled
+CONTEXT:  PL/pgSQL function sp_cancel_appointment(uuid,"AppointmentStatus",text,timestamp with time zone) line 28 at RAISE
+SELECT 'B' AS session, 'cancel succeeded' AS outcome, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+SELECT pg_sleep(0);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+COMMIT;
+ROLLBACK
+SELECT 'B' AS session, 'transaction ended' AS outcome, to_char(clock_timestamp(), 'HH24:MI:SS.MS') AS at;
+ session |      outcome      |      at      
+---------+-------------------+--------------
+ B       | transaction ended | 08:53:47.200
+(1 row)
+
+---- appointment 510 and its audit rows
+       status       | cancellationReason 
+--------------------+--------------------
+ CANCELLED_BY_ADMIN | Concurrency demo A
+(1 row)
+
+ oldStatus |     newStatus      
+-----------+--------------------
+ BOOKED    | CANCELLED_BY_ADMIN
+(1 row)
+
+---- restore appointment 510 to its 02_dml.sql state (demo cleanup)
+UPDATE 1
+DELETE 2
