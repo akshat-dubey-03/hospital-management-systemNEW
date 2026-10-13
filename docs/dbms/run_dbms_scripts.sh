@@ -3,10 +3,12 @@
 # and captures the echoed SQL + output as evidence under docs/dbms/results/.
 #
 # Usage (from the repository root, Git Bash / Linux / macOS):
-#   docs/dbms/run_dbms_scripts.sh [--create] <container> <database> <file.sql>...
+#   docs/dbms/run_dbms_scripts.sh [--create] [--user role] <container> <database> <file.sql>...
 #
 #   --create   create <database> first; aborts if it already exists
 #              (this script never drops a database).
+#   --user R   run the files as database role R instead of postgres
+#              (used to capture a restricted login session).
 #
 # Example — full clean build of the assessment database:
 #   docs/dbms/run_dbms_scripts.sh --create medicore_dbms_test medicore_dbms_demo \
@@ -19,9 +21,16 @@
 set -uo pipefail
 
 create=0
-if [[ "${1:-}" == "--create" ]]; then create=1; shift; fi
+run_user=postgres
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --create) create=1; shift ;;
+    --user) run_user="$2"; shift 2 ;;
+    *) break ;;
+  esac
+done
 if [[ $# -lt 3 ]]; then
-  echo "usage: $0 [--create] <container> <database> <file.sql>..." >&2
+  echo "usage: $0 [--create] [--user role] <container> <database> <file.sql>..." >&2
   exit 2
 fi
 
@@ -33,6 +42,7 @@ if [[ ! "$db" =~ ^medicore_dbms_[a-z0-9_]+$ ]]; then
 fi
 
 psql_base=(docker exec -i "$container" psql -U postgres -X -v ON_ERROR_STOP=1)
+psql_run=(docker exec -i "$container" psql -U "$run_user" -X -v ON_ERROR_STOP=1)
 
 if [[ $create -eq 1 ]]; then
   exists=$("${psql_base[@]}" -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$db'") || exit 1
@@ -63,12 +73,12 @@ for file in "$@"; do
   {
     echo "-- MediCore DBMS execution evidence"
     echo "-- Run (UTC): $(date -u +%FT%TZ)"
-    echo "-- Container: $container   Database: $db"
+    echo "-- Container: $container   Database: $db   Role: $run_user"
     echo "-- Server: $server"
     echo "-- psql flags: -X -v ON_ERROR_STOP=1 -e"
     echo "-- File: $file"
     echo
-    "${psql_base[@]}" -d "$db" -e < "$file" 2>&1
+    "${psql_run[@]}" -d "$db" -e < "$file" 2>&1
     echo "EXIT_CODE=$?"
   } > "$out"
   code=$(grep -o 'EXIT_CODE=[0-9]*' "$out" | tail -1 | cut -d= -f2)
