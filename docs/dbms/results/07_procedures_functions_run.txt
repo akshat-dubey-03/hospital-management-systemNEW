@@ -1,6 +1,6 @@
 -- MediCore DBMS execution evidence
--- Run (UTC): 2026-10-11T12:07:08Z
--- Container: medicore_dbms_test   Database: medicore_dbms_p9   Role: postgres
+-- Run (UTC): 2026-10-13T08:52:50Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_p10   Role: postgres
 -- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- psql flags: -X -v ON_ERROR_STOP=1 -e
 -- File: docs/dbms/sql/07_procedures_functions.sql
@@ -327,12 +327,12 @@ EXCEPTION WHEN null_value_not_allowed THEN
   RAISE NOTICE 'PASS NULL id: %', SQLERRM;
 END $$;
 NOTICE:  PASS invalid cancel status: status COMPLETED is not a cancellation status
-NOTICE:  PASS NULL id: appointment id and cancel status are required
 DO
 BEGIN;
 BEGIN
 CALL sp_respond_to_query('00000000-0000-4000-a000-000000000702', 'RESOLVED',
                          'Saturday clinics are not offered; weekday slots are open.');
+NOTICE:  PASS NULL id: appointment id and cancel status are required
 CALL
 SELECT "status", "adminResponse", "respondedAt" IS NOT NULL AS responded_at_set
 FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000702';
@@ -363,6 +363,7 @@ BEGIN
 EXCEPTION WHEN invalid_parameter_value THEN
   RAISE NOTICE 'PASS RESOLVED without response: %', SQLERRM;
 END $$;
+NOTICE:  PASS RESOLVED without response: a response is required to resolve a query
 DO
 DO $$
 BEGIN
@@ -371,7 +372,6 @@ BEGIN
 EXCEPTION WHEN invalid_parameter_value THEN
   RAISE NOTICE 'PASS back to OPEN: %', SQLERRM;
 END $$;
-NOTICE:  PASS RESOLVED without response: a response is required to resolve a query
 NOTICE:  PASS back to OPEN: a query cannot be moved back to OPEN
 DO
 DO $$
@@ -390,12 +390,12 @@ BEGIN
 EXCEPTION WHEN no_data_found THEN
   RAISE NOTICE 'PASS unknown query: %', SQLERRM;
 END $$;
-NOTICE:  PASS unknown query: query 00000000-0000-4000-a000-00000000ffff not found
 DO
 SELECT (SELECT "status" FROM "appointments" WHERE "id" = '00000000-0000-4000-a000-000000000510') AS appt_510,
        (SELECT "status" FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000702') AS query_702,
        (SELECT "status" FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000705') AS query_705,
        (SELECT COUNT(*) FROM "appointments") AS appointment_rows;
+NOTICE:  PASS unknown query: query 00000000-0000-4000-a000-00000000ffff not found
  appt_510 | query_702 | query_705 | appointment_rows 
 ----------+-----------+-----------+------------------
  BOOKED   | OPEN      | OPEN      |               15
