@@ -1,6 +1,8 @@
 # Phase 1 review notes
 
-The original `PHASE1_REVIEW_NOTES.md` from the static-reviewed bundle was not included in the handoff package. This file rebuilds that log from the handoff document and records the audit and execution carried out on 2026-10-10.
+The original static-review notes were not in the handoff package. They were later added to `main` by Hrushaibh in PR #1 (commit `c81afc0`, "dbms: add Phase 1 SQL implementation"). When `main` was merged into `Aryaman` on 2026-10-20, the eight Phase 1 files from that PR were compared line by line with this branch. Every line unique to the PR was an earlier, pre-fix version: the "unverified" notes, appointment dates outside availability, the duplicate "Meera Iyer", the old `patientId` index, and the garbled comments. This branch's versions were therefore kept. The PR's correction list is identical to section 1 below.
+
+This file records those static-review corrections, plus the audit and execution carried out on 2026-10-10.
 
 ## 1. Static review corrections (prior chat, carried over)
 
