@@ -1,0 +1,181 @@
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-13T09:06:19Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_final   Role: postgres
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/09_cursors.sql
+
+BEGIN;
+BEGIN
+DECLARE upcoming_cur SCROLL CURSOR FOR
+  SELECT appointment_date, start_time, doctor_name, department_name, patient_name, status
+  FROM "vw_dbms_appointment_details"
+  WHERE status_group = 'ACTIVE'
+    AND appointment_date >= DATE '2026-10-01'
+  ORDER BY appointment_date, start_time, appointment_id;
+DECLARE CURSOR
+FETCH 3 FROM upcoming_cur;
+ appointment_date | start_time | doctor_name  | department_name | patient_name |  status   
+------------------+------------+--------------+-----------------+--------------+-----------
+ 2026-10-07       | 09:00      | Rohan Mehta  | Orthopedics     | Amit Joshi   | CONFIRMED
+ 2026-10-12       | 09:20      | Anjali Singh | Pediatrics      | Kavya Reddy  | CONFIRMED
+ 2026-10-15       | 10:00      | Arjun Sharma | Cardiology      | Rahul Kumar  | BOOKED
+(3 rows)
+
+FETCH 3 FROM upcoming_cur;
+ appointment_date | start_time | doctor_name  | department_name | patient_name |  status   
+------------------+------------+--------------+-----------------+--------------+-----------
+ 2026-10-15       | 10:30      | Arjun Sharma | Cardiology      | Sneha Patel  | CONFIRMED
+ 2026-10-19       | 14:00      | Arjun Sharma | Cardiology      | Suresh Nair  | BOOKED
+ 2026-10-20       | 11:00      | Priya Kapoor | Neurology       | Sneha Patel  | BOOKED
+(3 rows)
+
+FETCH PRIOR FROM upcoming_cur;
+ appointment_date | start_time | doctor_name  | department_name | patient_name | status 
+------------------+------------+--------------+-----------------+--------------+--------
+ 2026-10-19       | 14:00      | Arjun Sharma | Cardiology      | Suresh Nair  | BOOKED
+(1 row)
+
+MOVE FORWARD 1 IN upcoming_cur;
+MOVE 1
+FETCH NEXT FROM upcoming_cur;
+ appointment_date | start_time | doctor_name | department_name | patient_name | status 
+------------------+------------+-------------+-----------------+--------------+--------
+ 2026-11-06       | 14:00      | Rohan Mehta | Orthopedics     | Rahul Kumar  | BOOKED
+(1 row)
+
+FETCH ALL FROM upcoming_cur;
+ appointment_date | start_time | doctor_name  | department_name | patient_name | status 
+------------------+------------+--------------+-----------------+--------------+--------
+ 2026-11-09       | 10:00      | Anjali Singh | Pediatrics      | Meera Iyer   | BOOKED
+(1 row)
+
+FETCH NEXT FROM upcoming_cur;
+ appointment_date | start_time | doctor_name | department_name | patient_name | status 
+------------------+------------+-------------+-----------------+--------------+--------
+(0 rows)
+
+FETCH ABSOLUTE 1 FROM upcoming_cur;
+ appointment_date | start_time | doctor_name | department_name | patient_name |  status   
+------------------+------------+-------------+-----------------+--------------+-----------
+ 2026-10-07       | 09:00      | Rohan Mehta | Orthopedics     | Amit Joshi   | CONFIRMED
+(1 row)
+
+SELECT name, is_scrollable, is_holdable, statement LIKE '%ORDER BY%' AS has_order_by
+FROM pg_cursors;
+     name     | is_scrollable | is_holdable | has_order_by 
+--------------+---------------+-------------+--------------
+ upcoming_cur | t             | f           | t
+(1 row)
+
+CLOSE upcoming_cur;
+CLOSE CURSOR
+COMMIT;
+COMMIT
+SELECT appointment_date, start_time, doctor_name, department_name, patient_name, status
+FROM "vw_dbms_appointment_details"
+WHERE status_group = 'ACTIVE' AND appointment_date >= DATE '2026-10-01'
+ORDER BY appointment_date, start_time, appointment_id
+LIMIT 3 OFFSET 3;
+ appointment_date | start_time | doctor_name  | department_name | patient_name |  status   
+------------------+------------+--------------+-----------------+--------------+-----------
+ 2026-10-15       | 10:30      | Arjun Sharma | Cardiology      | Sneha Patel  | CONFIRMED
+ 2026-10-19       | 14:00      | Arjun Sharma | Cardiology      | Suresh Nair  | BOOKED
+ 2026-10-20       | 11:00      | Priya Kapoor | Neurology       | Sneha Patel  | BOOKED
+(3 rows)
+
+DO $$
+DECLARE
+  -- Parameterised cursor: only doctors whose active flag matches p_active.
+  doctor_cur CURSOR (p_active BOOLEAN) FOR
+    SELECT doctor_name, department_name, total_appointments, booked_count + confirmed_count AS pipeline,
+           completed_count, cancelled_count
+    FROM "vw_dbms_doctor_appointment_stats"
+    WHERE doctor_is_active = p_active
+    ORDER BY department_name, doctor_name;
+  rec            RECORD;
+  current_dept   TEXT := NULL;
+  dept_total     INTEGER := 0;
+  grand_total    INTEGER := 0;
+  doctors_seen   INTEGER := 0;
+  workload       TEXT;
+BEGIN
+  OPEN doctor_cur(TRUE);
+  LOOP
+    FETCH doctor_cur INTO rec;
+    EXIT WHEN NOT FOUND;                       -- cursor exhausted
+
+    -- Control break: department changed -> print previous subtotal.
+    IF current_dept IS NOT NULL AND rec.department_name <> current_dept THEN
+      RAISE NOTICE '   subtotal %: % appointments', current_dept, dept_total;
+      dept_total := 0;
+    END IF;
+    current_dept := rec.department_name;
+
+    workload := CASE
+                  WHEN rec.pipeline >= 3 THEN 'HIGH'
+                  WHEN rec.pipeline >= 1 THEN 'NORMAL'
+                  ELSE 'IDLE'
+                END;
+    RAISE NOTICE '% | % | total=% pipeline=% completed=% cancelled=% | workload=%',
+      rpad(rec.department_name, 11), rpad(rec.doctor_name, 13), rec.total_appointments,
+      rec.pipeline, rec.completed_count, rec.cancelled_count, workload;
+
+    dept_total   := dept_total + rec.total_appointments;
+    grand_total  := grand_total + rec.total_appointments;
+    doctors_seen := doctors_seen + 1;
+  END LOOP;
+  IF current_dept IS NOT NULL THEN
+    RAISE NOTICE '   subtotal %: % appointments', current_dept, dept_total;
+  END IF;
+  CLOSE doctor_cur;
+
+  RAISE NOTICE 'active doctors processed: %, appointments: %', doctors_seen, grand_total;
+END $$;
+NOTICE:  Cardiology  | Arjun Sharma  | total=6 pipeline=3 completed=2 cancelled=1 | workload=HIGH
+NOTICE:     subtotal Cardiology: 6 appointments
+NOTICE:  Dermatology | Kavita Rao    | total=0 pipeline=0 completed=0 cancelled=0 | workload=IDLE
+NOTICE:     subtotal Dermatology: 0 appointments
+NOTICE:  Neurology   | Priya Kapoor  | total=3 pipeline=1 completed=1 cancelled=1 | workload=NORMAL
+NOTICE:     subtotal Neurology: 3 appointments
+NOTICE:  Orthopedics | Rohan Mehta   | total=3 pipeline=2 completed=1 cancelled=0 | workload=NORMAL
+NOTICE:     subtotal Orthopedics: 3 appointments
+NOTICE:  Pediatrics  | Anjali Singh  | total=3 pipeline=2 completed=0 cancelled=1 | workload=NORMAL
+DO
+SELECT COALESCE(department_name, '(all)') AS department,
+       COALESCE(doctor_name, '(subtotal)') AS doctor,
+       SUM(total_appointments) AS total,
+       SUM(booked_count + confirmed_count) AS pipeline,
+       CASE WHEN doctor_name IS NULL THEN NULL
+            WHEN SUM(booked_count + confirmed_count) >= 3 THEN 'HIGH'
+            WHEN SUM(booked_count + confirmed_count) >= 1 THEN 'NORMAL'
+            ELSE 'IDLE' END AS workload
+FROM "vw_dbms_doctor_appointment_stats"
+WHERE doctor_is_active
+GROUP BY GROUPING SETS ((department_name, doctor_name), (department_name), ())
+ORDER BY department_name NULLS LAST, doctor_name NULLS LAST;
+NOTICE:     subtotal Pediatrics: 3 appointments
+NOTICE:  active doctors processed: 5, appointments: 15
+ department  |    doctor    | total | pipeline | workload 
+-------------+--------------+-------+----------+----------
+ Cardiology  | Arjun Sharma |     6 |        3 | HIGH
+ Cardiology  | (subtotal)   |     6 |        3 | 
+ Dermatology | Kavita Rao   |     0 |        0 | IDLE
+ Dermatology | (subtotal)   |     0 |        0 | 
+ Neurology   | Priya Kapoor |     3 |        1 | NORMAL
+ Neurology   | (subtotal)   |     3 |        1 | 
+ Orthopedics | Rohan Mehta  |     3 |        2 | NORMAL
+ Orthopedics | (subtotal)   |     3 |        2 | 
+ Pediatrics  | Anjali Singh |     3 |        2 | NORMAL
+ Pediatrics  | (subtotal)   |     3 |        2 | 
+ (all)       | (subtotal)   |    15 |        8 | 
+(11 rows)
+
+SELECT (SELECT COUNT(*) FROM "appointments") AS appointments,
+       (SELECT COUNT(*) FROM "appointment_status_audit") AS audit_rows;
+ appointments | audit_rows 
+--------------+------------
+           15 |          0
+(1 row)
+
+EXIT_CODE=0

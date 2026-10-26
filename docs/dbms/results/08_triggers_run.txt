@@ -1,0 +1,198 @@
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-13T09:06:18Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_final   Role: postgres
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/08_triggers.sql
+
+CREATE TABLE "appointment_status_audit" (
+    "id" BIGSERIAL NOT NULL,
+    "appointmentId" UUID NOT NULL,
+    "oldStatus" "AppointmentStatus" NOT NULL,
+    "newStatus" "AppointmentStatus" NOT NULL,
+    "changedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "changedBy" VARCHAR(63) NOT NULL,
+    CONSTRAINT "appointment_status_audit_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE
+CREATE INDEX "appointment_status_audit_appointmentId_changedAt_idx" ON "appointment_status_audit"("appointmentId", "changedAt");
+CREATE INDEX
+ALTER TABLE "appointment_status_audit" ADD CONSTRAINT "appointment_status_audit_appointmentId_fkey" FOREIGN KEY ("appointmentId") REFERENCES "appointments"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE
+CREATE OR REPLACE FUNCTION "trg_fn_queries_responded_at"()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW."adminResponse" := NULLIF(btrim(NEW."adminResponse"), '');
+
+  IF NEW."adminResponse" IS NULL THEN
+    NEW."respondedAt" := NULL;
+  ELSIF TG_OP = 'INSERT' THEN
+    NEW."respondedAt" := COALESCE(NEW."respondedAt", now());
+  ELSIF NEW."adminResponse" IS DISTINCT FROM OLD."adminResponse" THEN
+    NEW."respondedAt" := now();
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+CREATE FUNCTION
+COMMENT ON FUNCTION "trg_fn_queries_responded_at"() IS
+  'BEFORE INSERT/UPDATE on queries: blank response -> NULL; no response -> respondedAt NULL; new or changed response -> respondedAt = now().';
+COMMENT
+CREATE TRIGGER "trg_queries_responded_at"
+BEFORE INSERT OR UPDATE OF "adminResponse", "respondedAt" ON "queries"
+FOR EACH ROW
+EXECUTE FUNCTION "trg_fn_queries_responded_at"();
+CREATE TRIGGER
+CREATE OR REPLACE FUNCTION "trg_fn_appointments_status_audit"()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  INSERT INTO "appointment_status_audit" ("appointmentId", "oldStatus", "newStatus", "changedAt", "changedBy")
+  VALUES (NEW."id", OLD."status", NEW."status", now(), session_user);
+  RETURN NULL; -- AFTER trigger: return value is ignored
+END;
+$$;
+CREATE FUNCTION
+COMMENT ON FUNCTION "trg_fn_appointments_status_audit"() IS
+  'AFTER UPDATE OF status on appointments: inserts one appointment_status_audit row per real status change.';
+COMMENT
+REVOKE EXECUTE ON FUNCTION "trg_fn_appointments_status_audit"() FROM PUBLIC;
+REVOKE
+CREATE TRIGGER "trg_appointments_status_audit"
+AFTER UPDATE OF "status" ON "appointments"
+FOR EACH ROW
+WHEN (OLD."status" IS DISTINCT FROM NEW."status")
+EXECUTE FUNCTION "trg_fn_appointments_status_audit"();
+CREATE TRIGGER
+SELECT event_object_table AS table_name, trigger_name, action_timing, event_manipulation,
+       action_condition
+FROM information_schema.triggers
+WHERE trigger_schema = 'public'
+ORDER BY table_name, trigger_name, event_manipulation;
+  table_name  |         trigger_name          | action_timing | event_manipulation |             action_condition             
+--------------+-------------------------------+---------------+--------------------+------------------------------------------
+ appointments | trg_appointments_status_audit | AFTER         | UPDATE             | (old.status IS DISTINCT FROM new.status)
+ queries      | trg_queries_responded_at      | BEFORE        | INSERT             | 
+ queries      | trg_queries_responded_at      | BEFORE        | UPDATE             | 
+(3 rows)
+
+BEGIN;
+BEGIN
+INSERT INTO "queries" ("id", "patientId", "subject", "message", "adminResponse", "respondedAt", "updatedAt") VALUES
+  ('00000000-0000-4000-a000-0000000007a1', '00000000-0000-4000-a000-000000000201', 'T-A1', 'm', 'Answered on insert', NULL, now()),
+  ('00000000-0000-4000-a000-0000000007a2', '00000000-0000-4000-a000-000000000201', 'T-A2', 'm', '   ', TIMESTAMPTZ '2026-01-01 00:00+00', now()),
+  ('00000000-0000-4000-a000-0000000007a3', '00000000-0000-4000-a000-000000000201', 'T-A3', 'm', NULL, NULL, now());
+INSERT 0 3
+SELECT "subject", "adminResponse", "respondedAt" = now() AS responded_now, "respondedAt" IS NULL AS responded_null
+FROM "queries" WHERE "subject" LIKE 'T-A%' ORDER BY "subject";
+ subject |   adminResponse    | responded_now | responded_null 
+---------+--------------------+---------------+----------------
+ T-A1    | Answered on insert | t             | f
+ T-A2    |                    |               | t
+ T-A3    |                    |               | t
+(3 rows)
+
+UPDATE "queries" SET "adminResponse" = 'Weekday slots only.' WHERE "id" = '00000000-0000-4000-a000-000000000702';
+UPDATE 1
+UPDATE "queries" SET "adminResponse" = 'Edited answer.' WHERE "id" = '00000000-0000-4000-a000-000000000701';
+UPDATE 1
+UPDATE "queries" SET "adminResponse" = "adminResponse" WHERE "id" = '00000000-0000-4000-a000-000000000704';
+UPDATE 1
+UPDATE "queries" SET "adminResponse" = NULL WHERE "id" = '00000000-0000-4000-a000-0000000007a1';
+UPDATE 1
+UPDATE "queries" SET "status" = 'RESOLVED' WHERE "id" = '00000000-0000-4000-a000-000000000703';
+UPDATE 1
+SELECT "subject", "status", "adminResponse", "respondedAt",
+       "respondedAt" = now() AS responded_now
+FROM "queries"
+WHERE "id" IN ('00000000-0000-4000-a000-000000000702', '00000000-0000-4000-a000-000000000701',
+               '00000000-0000-4000-a000-000000000704', '00000000-0000-4000-a000-0000000007a1',
+               '00000000-0000-4000-a000-000000000703')
+ORDER BY "subject";
+               subject               |  status  |             adminResponse              |          respondedAt          | responded_now 
+-------------------------------------+----------+----------------------------------------+-------------------------------+---------------
+ How do I reschedule an appointment? | RESOLVED | Edited answer.                         | 2026-10-13 09:06:18.642681+00 | t
+ Invoice copy                        | CLOSED   | Invoice copy sent to registered email. | 2026-09-20 12:00:00+00        | f
+ Request for visit notes             | RESOLVED |                                        |                               | 
+ Saturday availability               | OPEN     | Weekday slots only.                    | 2026-10-13 09:06:18.642681+00 | t
+ T-A1                                | OPEN     |                                        |                               | 
+(5 rows)
+
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE "appointments" SET "status" = 'CONFIRMED', "updatedAt" = now()
+WHERE "id" = '00000000-0000-4000-a000-000000000510';
+UPDATE 1
+UPDATE "appointments" SET "status" = 'CONFIRMED', "updatedAt" = now()
+WHERE "id" = '00000000-0000-4000-a000-000000000510';
+UPDATE 1
+UPDATE "appointments" SET "notes" = 'Bring ECG reports.', "updatedAt" = now()
+WHERE "id" = '00000000-0000-4000-a000-000000000510';
+UPDATE 1
+UPDATE "appointments" SET "status" = 'CONFIRMED', "updatedAt" = now()
+WHERE "id" IN ('00000000-0000-4000-a000-000000000511', '00000000-0000-4000-a000-000000000513');
+UPDATE 2
+CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CANCELLED_BY_PATIENT',
+                           'Audit demo', TIMESTAMPTZ '2026-10-10 09:00+00');
+CALL
+SELECT right(au."appointmentId"::text, 3) AS appt, au."oldStatus", au."newStatus",
+       au."changedBy", au."changedAt" = now() AS changed_in_this_txn
+FROM "appointment_status_audit" au
+ORDER BY au."id";
+ appt | oldStatus |      newStatus       | changedBy | changed_in_this_txn 
+------+-----------+----------------------+-----------+---------------------
+ 510  | BOOKED    | CONFIRMED            | postgres  | t
+ 511  | BOOKED    | CONFIRMED            | postgres  | t
+ 513  | BOOKED    | CONFIRMED            | postgres  | t
+ 510  | CONFIRMED | CANCELLED_BY_PATIENT | postgres  | t
+(4 rows)
+
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE "appointments" SET "status" = 'CONFIRMED', "updatedAt" = now()
+WHERE "id" = '00000000-0000-4000-a000-000000000512';
+UPDATE 1
+SELECT COUNT(*) AS audit_rows_inside_txn FROM "appointment_status_audit";
+ audit_rows_inside_txn 
+-----------------------
+                     1
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+SELECT COUNT(*) AS audit_rows_after_rollback FROM "appointment_status_audit";
+ audit_rows_after_rollback 
+---------------------------
+                         0
+(1 row)
+
+DO $$
+BEGIN
+  UPDATE "appointments" SET "status" = 'CONFIRMED', "endTime" = '09:00', "updatedAt" = now()
+  WHERE "id" = '00000000-0000-4000-a000-000000000512';   -- endTime before startTime 14:00
+  RAISE EXCEPTION 'FAIL: invalid update accepted';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'PASS invalid update rejected, audit rows now: %',
+    (SELECT COUNT(*) FROM "appointment_status_audit");
+END $$;
+DO
+SELECT (SELECT "status" FROM "appointments" WHERE "id" = '00000000-0000-4000-a000-000000000510') AS appt_510,
+       (SELECT "respondedAt" FROM "queries" WHERE "id" = '00000000-0000-4000-a000-000000000701') AS query_701_responded_at,
+       (SELECT COUNT(*) FROM "appointment_status_audit") AS audit_rows;
+NOTICE:  PASS invalid update rejected, audit rows now: 0
+ appt_510 | query_701_responded_at | audit_rows 
+----------+------------------------+------------
+ BOOKED   | 2026-09-12 10:00:00+00 |          0
+(1 row)
+
+EXIT_CODE=0

@@ -1,0 +1,955 @@
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-13T09:06:12Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_final   Role: postgres
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/03_sql_queries.sql
+
+SELECT
+  d."id",
+  d."firstName",
+  d."lastName",
+  d."specialization",
+  d."consultationFee"
+FROM "doctors" AS d
+WHERE d."isActive" = TRUE
+ORDER BY d."lastName", d."firstName";
+                  id                  | firstName | lastName |      specialization       | consultationFee 
+--------------------------------------+-----------+----------+---------------------------+-----------------
+ 00000000-0000-4000-a000-000000000302 | Priya     | Kapoor   | Stroke Medicine           |          700.00
+ 00000000-0000-4000-a000-000000000303 | Rohan     | Mehta    | Joint Replacement         |          750.00
+ 00000000-0000-4000-a000-000000000306 | Kavita    | Rao      | General Dermatology       |          680.00
+ 00000000-0000-4000-a000-000000000301 | Arjun     | Sharma   | Interventional Cardiology |          800.00
+ 00000000-0000-4000-a000-000000000304 | Anjali    | Singh    | General Pediatrics        |          600.00
+(5 rows)
+
+SELECT
+  a."id",
+  a."appointmentDate",
+  a."startTime",
+  a."status",
+  a."reasonForVisit"
+FROM "appointments" AS a
+WHERE a."appointmentDate" >= DATE '2026-10-01'
+  AND a."status" IN ('BOOKED', 'CONFIRMED')
+ORDER BY a."appointmentDate", a."startTime";
+                  id                  | appointmentDate | startTime |  status   |              reasonForVisit              
+--------------------------------------+-----------------+-----------+-----------+------------------------------------------
+ 00000000-0000-4000-a000-000000000508 | 2026-10-07      | 09:00     | CONFIRMED | Knee pain after sports injury
+ 00000000-0000-4000-a000-000000000509 | 2026-10-12      | 09:20     | CONFIRMED | Routine child health checkup
+ 00000000-0000-4000-a000-000000000510 | 2026-10-15      | 10:00     | BOOKED    | Chest discomfort and shortness of breath
+ 00000000-0000-4000-a000-000000000515 | 2026-10-15      | 10:30     | CONFIRMED | Cardiology follow-up
+ 00000000-0000-4000-a000-000000000512 | 2026-10-19      | 14:00     | BOOKED    | Hypertension review
+ 00000000-0000-4000-a000-000000000511 | 2026-10-20      | 11:00     | BOOKED    | Follow-up for headaches
+ 00000000-0000-4000-a000-000000000513 | 2026-11-06      | 14:00     | BOOKED    | Shoulder stiffness
+ 00000000-0000-4000-a000-000000000514 | 2026-11-09      | 10:00     | BOOKED    | Vaccination advice
+(8 rows)
+
+SELECT DISTINCT p."bloodGroup"
+FROM "patients" AS p
+WHERE p."bloodGroup" IS NOT NULL
+ORDER BY p."bloodGroup";
+ bloodGroup 
+------------
+ A+
+ AB+
+ B+
+ O+
+(4 rows)
+
+SELECT
+  a."id",
+  a."appointmentDate",
+  a."status"
+FROM "appointments" AS a
+WHERE a."appointmentDate" BETWEEN DATE '2026-08-01' AND DATE '2026-08-31'
+ORDER BY a."appointmentDate";
+                  id                  | appointmentDate |  status   
+--------------------------------------+-----------------+-----------
+ 00000000-0000-4000-a000-000000000501 | 2026-08-13      | COMPLETED
+ 00000000-0000-4000-a000-000000000502 | 2026-08-18      | COMPLETED
+ 00000000-0000-4000-a000-000000000503 | 2026-08-21      | COMPLETED
+(3 rows)
+
+SELECT
+  q."id",
+  q."subject",
+  q."status",
+  q."createdAt"
+FROM "queries" AS q
+WHERE q."status" IN ('OPEN', 'IN_PROGRESS')
+ORDER BY q."createdAt";
+                  id                  |            subject            |   status    |       createdAt        
+--------------------------------------+-------------------------------+-------------+------------------------
+ 00000000-0000-4000-a000-000000000702 | Saturday availability         | OPEN        | 2026-10-01 11:00:00+00
+ 00000000-0000-4000-a000-000000000703 | Request for visit notes       | IN_PROGRESS | 2026-10-02 13:00:00+00
+ 00000000-0000-4000-a000-000000000705 | Cardiology follow-up question | OPEN        | 2026-10-03 12:00:00+00
+(3 rows)
+
+SELECT
+  d."firstName",
+  d."lastName",
+  d."qualification"
+FROM "doctors" AS d
+WHERE d."qualification" LIKE '%DM%'
+ORDER BY d."lastName";
+ firstName | lastName |       qualification       
+-----------+----------+---------------------------
+ Priya     | Kapoor   | MBBS, MD, DM (Neurology)
+ Arjun     | Sharma   | MBBS, MD, DM (Cardiology)
+(2 rows)
+
+SELECT
+  p."id",
+  p."firstName",
+  p."lastName",
+  p."phone"
+FROM "patients" AS p
+WHERE p."address" IS NULL
+ORDER BY p."lastName";
+                  id                  | firstName | lastName |   phone    
+--------------------------------------+-----------+----------+------------
+ 00000000-0000-4000-a000-000000000206 | Meera     | Iyer     | 9876543215
+ 00000000-0000-4000-a000-000000000203 | Amit      | Joshi    | 9876543212
+(2 rows)
+
+SELECT
+  a."id",
+  a."status",
+  a."cancellationReason",
+  a."cancelledAt"
+FROM "appointments" AS a
+WHERE a."cancelledAt" IS NOT NULL
+ORDER BY a."cancelledAt";
+                  id                  |        status        |         cancellationReason         |      cancelledAt       
+--------------------------------------+----------------------+------------------------------------+------------------------
+ 00000000-0000-4000-a000-000000000505 | CANCELLED_BY_PATIENT | Personal emergency                 | 2026-09-07 18:00:00+00
+ 00000000-0000-4000-a000-000000000506 | CANCELLED_BY_DOCTOR  | Doctor attending a conference      | 2026-09-13 07:00:00+00
+ 00000000-0000-4000-a000-000000000507 | CANCELLED_BY_ADMIN   | Duplicate booking removed by admin | 2026-09-18 11:00:00+00
+(3 rows)
+
+SELECT
+  a."status",
+  COUNT(*) AS appointment_count
+FROM "appointments" AS a
+GROUP BY a."status"
+ORDER BY appointment_count DESC, a."status";
+        status        | appointment_count 
+----------------------+-------------------
+ BOOKED               |                 5
+ COMPLETED            |                 4
+ CONFIRMED            |                 3
+ CANCELLED_BY_PATIENT |                 1
+ CANCELLED_BY_DOCTOR  |                 1
+ CANCELLED_BY_ADMIN   |                 1
+(6 rows)
+
+SELECT
+  SUM(d."consultationFee") AS estimated_completed_fee_total
+FROM "appointments" AS a
+JOIN "doctors" AS d ON d."id" = a."doctorId"
+WHERE a."status" = 'COMPLETED';
+ estimated_completed_fee_total 
+-------------------------------
+                       3050.00
+(1 row)
+
+SELECT
+  COUNT(*) AS feedback_rows,
+  COUNT(f."rating") AS rated_rows,
+  ROUND(AVG(f."rating"), 2) AS avg_rating,
+  MIN(f."rating") AS min_rating,
+  MAX(f."rating") AS max_rating
+FROM "feedback" AS f;
+ feedback_rows | rated_rows | avg_rating | min_rating | max_rating 
+---------------+------------+------------+------------+------------
+             5 |          4 |       3.25 |          1 |          5
+(1 row)
+
+SELECT
+  dep."name" AS department_name,
+  COUNT(*) AS completed_visits,
+  ROUND(AVG(d."consultationFee"), 2) AS avg_fee
+FROM "appointments" AS a
+JOIN "doctors" AS d ON d."id" = a."doctorId"
+JOIN "departments" AS dep ON dep."id" = d."departmentId"
+WHERE a."status" = 'COMPLETED'
+GROUP BY dep."name"
+ORDER BY completed_visits DESC, dep."name";
+ department_name | completed_visits | avg_fee 
+-----------------+------------------+---------
+ Cardiology      |                2 |  800.00
+ Neurology       |                1 |  700.00
+ Orthopedics     |                1 |  750.00
+(3 rows)
+
+SELECT
+  d."id",
+  d."firstName",
+  d."lastName",
+  COUNT(*) AS appointment_count
+FROM "appointments" AS a
+JOIN "doctors" AS d ON d."id" = a."doctorId"
+GROUP BY d."id", d."firstName", d."lastName"
+HAVING COUNT(*) >= 2
+ORDER BY appointment_count DESC;
+                  id                  | firstName | lastName | appointment_count 
+--------------------------------------+-----------+----------+-------------------
+ 00000000-0000-4000-a000-000000000301 | Arjun     | Sharma   |                 6
+ 00000000-0000-4000-a000-000000000304 | Anjali    | Singh    |                 3
+ 00000000-0000-4000-a000-000000000303 | Rohan     | Mehta    |                 3
+ 00000000-0000-4000-a000-000000000302 | Priya     | Kapoor   |                 3
+(4 rows)
+
+SELECT
+  d."lastName",
+  COUNT(*) AS active_load
+FROM "appointments" AS a
+JOIN "doctors" AS d ON d."id" = a."doctorId"
+WHERE a."status" NOT IN (
+  'CANCELLED_BY_PATIENT',
+  'CANCELLED_BY_DOCTOR',
+  'CANCELLED_BY_ADMIN'
+)
+GROUP BY d."id", d."lastName"
+HAVING COUNT(*) >= 2
+ORDER BY active_load DESC;
+ lastName | active_load 
+----------+-------------
+ Sharma   |           5
+ Mehta    |           3
+ Singh    |           2
+ Kapoor   |           2
+(4 rows)
+
+SELECT
+  d."firstName",
+  d."lastName",
+  COUNT(DISTINCT a."patientId") AS distinct_patients
+FROM "doctors" AS d
+JOIN "appointments" AS a ON a."doctorId" = d."id"
+GROUP BY d."id", d."firstName", d."lastName"
+ORDER BY distinct_patients DESC, d."lastName";
+ firstName | lastName | distinct_patients 
+-----------+----------+-------------------
+ Arjun     | Sharma   |                 4
+ Rohan     | Mehta    |                 3
+ Anjali    | Singh    |                 3
+ Priya     | Kapoor   |                 2
+(4 rows)
+
+SELECT
+  a."appointmentDate",
+  a."startTime",
+  a."status",
+  p."firstName" AS patient_first,
+  p."lastName" AS patient_last,
+  d."firstName" AS doctor_first,
+  d."lastName" AS doctor_last
+FROM "appointments" AS a
+INNER JOIN "patients" AS p ON p."id" = a."patientId"
+INNER JOIN "doctors" AS d ON d."id" = a."doctorId"
+ORDER BY a."appointmentDate", a."startTime";
+ appointmentDate | startTime |        status        | patient_first | patient_last | doctor_first | doctor_last 
+-----------------+-----------+----------------------+---------------+--------------+--------------+-------------
+ 2026-08-13      | 09:30     | COMPLETED            | Rahul         | Kumar        | Arjun        | Sharma
+ 2026-08-18      | 10:00     | COMPLETED            | Sneha         | Patel        | Priya        | Kapoor
+ 2026-08-21      | 14:00     | COMPLETED            | Suresh        | Nair         | Rohan        | Mehta
+ 2026-09-03      | 10:00     | COMPLETED            | Rahul         | Kumar        | Arjun        | Sharma
+ 2026-09-08      | 10:00     | CANCELLED_BY_PATIENT | Amit          | Joshi        | Priya        | Kapoor
+ 2026-09-14      | 09:00     | CANCELLED_BY_DOCTOR  | Kavya         | Reddy        | Arjun        | Sharma
+ 2026-09-21      | 09:00     | CANCELLED_BY_ADMIN   | Sneha         | Patel        | Anjali       | Singh
+ 2026-10-07      | 09:00     | CONFIRMED            | Amit          | Joshi        | Rohan        | Mehta
+ 2026-10-12      | 09:20     | CONFIRMED            | Kavya         | Reddy        | Anjali       | Singh
+ 2026-10-15      | 10:00     | BOOKED               | Rahul         | Kumar        | Arjun        | Sharma
+ 2026-10-15      | 10:30     | CONFIRMED            | Sneha         | Patel        | Arjun        | Sharma
+ 2026-10-19      | 14:00     | BOOKED               | Suresh        | Nair         | Arjun        | Sharma
+ 2026-10-20      | 11:00     | BOOKED               | Sneha         | Patel        | Priya        | Kapoor
+ 2026-11-06      | 14:00     | BOOKED               | Rahul         | Kumar        | Rohan        | Mehta
+ 2026-11-09      | 10:00     | BOOKED               | Meera         | Iyer         | Anjali       | Singh
+(15 rows)
+
+SELECT
+  dep."name" AS department_name,
+  d."id" AS doctor_id,
+  d."firstName",
+  d."lastName"
+FROM "departments" AS dep
+LEFT JOIN "doctors" AS d ON d."departmentId" = dep."id"
+ORDER BY dep."name", d."lastName" NULLS LAST;
+ department_name |              doctor_id               | firstName | lastName 
+-----------------+--------------------------------------+-----------+----------
+ Cardiology      | 00000000-0000-4000-a000-000000000301 | Arjun     | Sharma
+ Dermatology     | 00000000-0000-4000-a000-000000000305 | Neha      | Gupta
+ Dermatology     | 00000000-0000-4000-a000-000000000306 | Kavita    | Rao
+ Neurology       | 00000000-0000-4000-a000-000000000302 | Priya     | Kapoor
+ Oncology        |                                      |           | 
+ Orthopedics     | 00000000-0000-4000-a000-000000000303 | Rohan     | Mehta
+ Pediatrics      | 00000000-0000-4000-a000-000000000304 | Anjali    | Singh
+(7 rows)
+
+SELECT
+  dep."name" AS department_name,
+  d."firstName",
+  d."lastName"
+FROM "doctors" AS d
+RIGHT JOIN "departments" AS dep ON dep."id" = d."departmentId"
+ORDER BY dep."name", d."lastName" NULLS LAST;
+ department_name | firstName | lastName 
+-----------------+-----------+----------
+ Cardiology      | Arjun     | Sharma
+ Dermatology     | Neha      | Gupta
+ Dermatology     | Kavita    | Rao
+ Neurology       | Priya     | Kapoor
+ Oncology        |           | 
+ Orthopedics     | Rohan     | Mehta
+ Pediatrics      | Anjali    | Singh
+(7 rows)
+
+SELECT
+  COALESCE(f_p."id", q_p."id") AS patient_id,
+  COALESCE(f_p."lastName", q_p."lastName") AS last_name,
+  f.feedback_count,
+  q.query_count
+FROM (
+  SELECT "patientId", COUNT(*) AS feedback_count
+  FROM "feedback"
+  GROUP BY "patientId"
+) AS f
+FULL OUTER JOIN (
+  SELECT "patientId", COUNT(*) AS query_count
+  FROM "queries"
+  GROUP BY "patientId"
+) AS q ON q."patientId" = f."patientId"
+LEFT JOIN "patients" AS f_p ON f_p."id" = f."patientId"
+LEFT JOIN "patients" AS q_p ON q_p."id" = q."patientId"
+ORDER BY last_name;
+              patient_id              | last_name | feedback_count | query_count 
+--------------------------------------+-----------+----------------+-------------
+ 00000000-0000-4000-a000-000000000206 | Iyer      |              1 |            
+ 00000000-0000-4000-a000-000000000203 | Joshi     |              1 |           1
+ 00000000-0000-4000-a000-000000000201 | Kumar     |              1 |           2
+ 00000000-0000-4000-a000-000000000205 | Nair      |              1 |            
+ 00000000-0000-4000-a000-000000000202 | Patel     |              1 |           1
+ 00000000-0000-4000-a000-000000000204 | Reddy     |                |           1
+(6 rows)
+
+SELECT
+  p1."firstName" AS patient_a,
+  p1."lastName" AS last_a,
+  p2."firstName" AS patient_b,
+  p2."lastName" AS last_b,
+  p1."bloodGroup"
+FROM "patients" AS p1
+INNER JOIN "patients" AS p2
+  ON p1."bloodGroup" = p2."bloodGroup"
+ AND p1."id" < p2."id"
+WHERE p1."bloodGroup" IS NOT NULL
+ORDER BY p1."bloodGroup", last_a, last_b;
+ patient_a | last_a | patient_b | last_b | bloodGroup 
+-----------+--------+-----------+--------+------------
+ Rahul     | Kumar  | Suresh    | Nair   | O+
+(1 row)
+
+SELECT
+  d."lastName" AS doctor_last,
+  w.day_of_week,
+  w.day_name,
+  CASE WHEN av."id" IS NULL THEN 'NO_BLOCK' ELSE 'HAS_BLOCK' END AS coverage
+FROM "doctors" AS d
+CROSS JOIN (
+  SELECT 0 AS day_of_week, 'Monday' AS day_name
+  UNION ALL SELECT 1, 'Tuesday'
+  UNION ALL SELECT 2, 'Wednesday'
+  UNION ALL SELECT 3, 'Thursday'
+  UNION ALL SELECT 4, 'Friday'
+  UNION ALL SELECT 5, 'Saturday'
+  UNION ALL SELECT 6, 'Sunday'
+) AS w
+LEFT JOIN "doctor_availability" AS av
+  ON av."doctorId" = d."id"
+ AND av."dayOfWeek" = w.day_of_week
+ AND av."isActive" = TRUE
+WHERE d."isActive" = TRUE
+ORDER BY d."lastName", w.day_of_week;
+ doctor_last | day_of_week | day_name  | coverage  
+-------------+-------------+-----------+-----------
+ Kapoor      |           0 | Monday    | NO_BLOCK
+ Kapoor      |           1 | Tuesday   | HAS_BLOCK
+ Kapoor      |           1 | Tuesday   | HAS_BLOCK
+ Kapoor      |           2 | Wednesday | NO_BLOCK
+ Kapoor      |           3 | Thursday  | NO_BLOCK
+ Kapoor      |           4 | Friday    | NO_BLOCK
+ Kapoor      |           5 | Saturday  | NO_BLOCK
+ Kapoor      |           6 | Sunday    | NO_BLOCK
+ Mehta       |           0 | Monday    | NO_BLOCK
+ Mehta       |           1 | Tuesday   | NO_BLOCK
+ Mehta       |           2 | Wednesday | HAS_BLOCK
+ Mehta       |           3 | Thursday  | NO_BLOCK
+ Mehta       |           4 | Friday    | HAS_BLOCK
+ Mehta       |           5 | Saturday  | NO_BLOCK
+ Mehta       |           6 | Sunday    | NO_BLOCK
+ Rao         |           0 | Monday    | NO_BLOCK
+ Rao         |           1 | Tuesday   | NO_BLOCK
+ Rao         |           2 | Wednesday | NO_BLOCK
+ Rao         |           3 | Thursday  | NO_BLOCK
+ Rao         |           4 | Friday    | HAS_BLOCK
+ Rao         |           5 | Saturday  | NO_BLOCK
+ Rao         |           6 | Sunday    | NO_BLOCK
+ Sharma      |           0 | Monday    | HAS_BLOCK
+ Sharma      |           0 | Monday    | HAS_BLOCK
+ Sharma      |           1 | Tuesday   | NO_BLOCK
+ Sharma      |           2 | Wednesday | NO_BLOCK
+ Sharma      |           3 | Thursday  | HAS_BLOCK
+ Sharma      |           4 | Friday    | NO_BLOCK
+ Sharma      |           5 | Saturday  | NO_BLOCK
+ Sharma      |           6 | Sunday    | NO_BLOCK
+ Singh       |           0 | Monday    | HAS_BLOCK
+ Singh       |           1 | Tuesday   | NO_BLOCK
+ Singh       |           2 | Wednesday | NO_BLOCK
+ Singh       |           3 | Thursday  | NO_BLOCK
+ Singh       |           4 | Friday    | NO_BLOCK
+ Singh       |           5 | Saturday  | NO_BLOCK
+ Singh       |           6 | Sunday    | NO_BLOCK
+(37 rows)
+
+SELECT
+  p."firstName",
+  p."lastName",
+  c."title",
+  m."role",
+  m."createdAt",
+  LEFT(m."content", 80) AS content_preview
+FROM "chat_messages" AS m
+INNER JOIN "chat_conversations" AS c ON c."id" = m."conversationId"
+INNER JOIN "patients" AS p ON p."id" = c."patientId"
+ORDER BY m."createdAt";
+ firstName | lastName |              title              |   role    |       createdAt        |                                content_preview                                
+-----------+----------+---------------------------------+-----------+------------------------+-------------------------------------------------------------------------------
+ Rahul     | Kumar    | Appointment booking help        | USER      | 2026-09-01 10:00:00+00 | How do I book an appointment with a cardiologist?
+ Rahul     | Kumar    | Appointment booking help        | ASSISTANT | 2026-09-01 10:00:20+00 | Open Find Doctors, filter by Cardiology, then pick an available slot.
+ Rahul     | Kumar    | Appointment booking help        | USER      | 2026-09-01 10:05:00+00 | What should I bring to the first visit?
+ Rahul     | Kumar    | Appointment booking help        | ASSISTANT | 2026-09-01 10:05:30+00 | Bring prior reports and a medication list. This assistant is not a clinician.
+ Sneha     | Patel    | Preparation for neurology visit | USER      | 2026-09-02 11:00:00+00 | Should I stop my headache medicines before the visit?
+ Sneha     | Patel    | Preparation for neurology visit | ASSISTANT | 2026-09-02 11:00:15+00 | Do not change medicines unless your doctor advises it.
+(6 rows)
+
+SELECT
+  a."id",
+  d."lastName",
+  d."consultationFee",
+  (SELECT ROUND(AVG(d2."consultationFee"), 2) FROM "doctors" AS d2 WHERE d2."isActive" = TRUE)
+    AS hospital_avg_fee
+FROM "appointments" AS a
+JOIN "doctors" AS d ON d."id" = a."doctorId"
+WHERE a."status" = 'COMPLETED'
+ORDER BY d."consultationFee" DESC;
+                  id                  | lastName | consultationFee | hospital_avg_fee 
+--------------------------------------+----------+-----------------+------------------
+ 00000000-0000-4000-a000-000000000504 | Sharma   |          800.00 |           706.00
+ 00000000-0000-4000-a000-000000000501 | Sharma   |          800.00 |           706.00
+ 00000000-0000-4000-a000-000000000503 | Mehta    |          750.00 |           706.00
+ 00000000-0000-4000-a000-000000000502 | Kapoor   |          700.00 |           706.00
+(4 rows)
+
+SELECT
+  d."firstName",
+  d."lastName",
+  d."consultationFee"
+FROM "doctors" AS d
+WHERE d."id" = (
+  SELECT d2."id"
+  FROM "doctors" AS d2
+  WHERE d2."consultationFee" IS NOT NULL
+  ORDER BY d2."consultationFee" DESC, d2."id"
+  LIMIT 1
+);
+ firstName | lastName | consultationFee 
+-----------+----------+-----------------
+ Arjun     | Sharma   |          800.00
+(1 row)
+
+SELECT
+  p."firstName",
+  p."lastName"
+FROM "patients" AS p
+WHERE p."id" IN (
+  SELECT a."patientId"
+  FROM "appointments" AS a
+  WHERE a."status" = 'COMPLETED'
+)
+ORDER BY p."lastName";
+ firstName | lastName 
+-----------+----------
+ Rahul     | Kumar
+ Suresh    | Nair
+ Sneha     | Patel
+(3 rows)
+
+SELECT
+  d."firstName",
+  d."lastName",
+  d."consultationFee"
+FROM "doctors" AS d
+WHERE d."consultationFee" > ANY (
+  SELECT d2."consultationFee"
+  FROM "doctors" AS d2
+  JOIN "departments" AS dep ON dep."id" = d2."departmentId"
+  WHERE dep."name" = 'Pediatrics'
+    AND d2."consultationFee" IS NOT NULL
+)
+ORDER BY d."consultationFee" DESC;
+ firstName | lastName | consultationFee 
+-----------+----------+-----------------
+ Arjun     | Sharma   |          800.00
+ Rohan     | Mehta    |          750.00
+ Priya     | Kapoor   |          700.00
+ Kavita    | Rao      |          680.00
+ Neha      | Gupta    |          650.00
+(5 rows)
+
+SELECT
+  d."firstName",
+  d."lastName",
+  d."consultationFee"
+FROM "doctors" AS d
+WHERE d."consultationFee" >= ALL (
+  SELECT d2."consultationFee"
+  FROM "doctors" AS d2
+  JOIN "departments" AS dep ON dep."id" = d2."departmentId"
+  WHERE dep."name" = 'Dermatology'
+    AND d2."consultationFee" IS NOT NULL
+)
+ORDER BY d."consultationFee" DESC;
+ firstName | lastName | consultationFee 
+-----------+----------+-----------------
+ Arjun     | Sharma   |          800.00
+ Rohan     | Mehta    |          750.00
+ Priya     | Kapoor   |          700.00
+ Kavita    | Rao      |          680.00
+(4 rows)
+
+SELECT
+  d."firstName",
+  d."lastName",
+  (
+    SELECT COUNT(*)
+    FROM "appointments" AS a
+    WHERE a."doctorId" = d."id"
+      AND a."appointmentDate" >= DATE '2026-10-01'
+      AND a."status" IN ('BOOKED', 'CONFIRMED')
+  ) AS upcoming_count
+FROM "doctors" AS d
+WHERE d."isActive" = TRUE
+ORDER BY upcoming_count DESC, d."lastName";
+ firstName | lastName | upcoming_count 
+-----------+----------+----------------
+ Arjun     | Sharma   |              3
+ Rohan     | Mehta    |              2
+ Anjali    | Singh    |              2
+ Priya     | Kapoor   |              1
+ Kavita    | Rao      |              0
+(5 rows)
+
+SELECT
+  p."firstName",
+  p."lastName"
+FROM "patients" AS p
+WHERE EXISTS (
+  SELECT 1
+  FROM "feedback" AS f
+  WHERE f."patientId" = p."id"
+    AND f."isRead" = FALSE
+)
+ORDER BY p."lastName";
+ firstName | lastName 
+-----------+----------
+ Meera     | Iyer
+ Amit      | Joshi
+ Rahul     | Kumar
+ Suresh    | Nair
+(4 rows)
+
+SELECT
+  dep."id",
+  dep."name"
+FROM "departments" AS dep
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM "doctors" AS d
+  WHERE d."departmentId" = dep."id"
+)
+ORDER BY dep."name";
+                  id                  |   name   
+--------------------------------------+----------
+ 00000000-0000-4000-a000-000000000106 | Oncology
+(1 row)
+
+SELECT
+  p."firstName",
+  p."lastName"
+FROM "patients" AS p
+WHERE p."id" NOT IN (
+  SELECT a."patientId"
+  FROM "appointments" AS a
+  WHERE a."doctorId" = '00000000-0000-4000-a000-000000000301'
+    AND a."patientId" IS NOT NULL
+)
+ORDER BY p."lastName";
+ firstName | lastName 
+-----------+----------
+ Meera     | Iyer
+ Amit      | Joshi
+(2 rows)
+
+SELECT f."patientId" AS patient_id, 'FEEDBACK'::TEXT AS source
+FROM "feedback" AS f
+UNION
+SELECT q."patientId", 'QUERY'::TEXT
+FROM "queries" AS q
+ORDER BY patient_id, source;
+              patient_id              |  source  
+--------------------------------------+----------
+ 00000000-0000-4000-a000-000000000201 | FEEDBACK
+ 00000000-0000-4000-a000-000000000201 | QUERY
+ 00000000-0000-4000-a000-000000000202 | FEEDBACK
+ 00000000-0000-4000-a000-000000000202 | QUERY
+ 00000000-0000-4000-a000-000000000203 | FEEDBACK
+ 00000000-0000-4000-a000-000000000203 | QUERY
+ 00000000-0000-4000-a000-000000000204 | QUERY
+ 00000000-0000-4000-a000-000000000205 | FEEDBACK
+ 00000000-0000-4000-a000-000000000206 | FEEDBACK
+(9 rows)
+
+SELECT f."patientId" AS patient_id, 'FEEDBACK'::TEXT AS source
+FROM "feedback" AS f
+UNION ALL
+SELECT q."patientId", 'QUERY'::TEXT
+FROM "queries" AS q
+ORDER BY patient_id, source;
+              patient_id              |  source  
+--------------------------------------+----------
+ 00000000-0000-4000-a000-000000000201 | FEEDBACK
+ 00000000-0000-4000-a000-000000000201 | QUERY
+ 00000000-0000-4000-a000-000000000201 | QUERY
+ 00000000-0000-4000-a000-000000000202 | FEEDBACK
+ 00000000-0000-4000-a000-000000000202 | QUERY
+ 00000000-0000-4000-a000-000000000203 | FEEDBACK
+ 00000000-0000-4000-a000-000000000203 | QUERY
+ 00000000-0000-4000-a000-000000000204 | QUERY
+ 00000000-0000-4000-a000-000000000205 | FEEDBACK
+ 00000000-0000-4000-a000-000000000206 | FEEDBACK
+(10 rows)
+
+SELECT f."patientId" AS patient_id
+FROM "feedback" AS f
+INTERSECT
+SELECT q."patientId"
+FROM "queries" AS q
+ORDER BY patient_id;
+              patient_id              
+--------------------------------------
+ 00000000-0000-4000-a000-000000000201
+ 00000000-0000-4000-a000-000000000202
+ 00000000-0000-4000-a000-000000000203
+(3 rows)
+
+SELECT dep."id", dep."name"
+FROM "departments" AS dep
+WHERE dep."id" IN (
+  SELECT d1."id" FROM "departments" AS d1
+  EXCEPT
+  SELECT d2."departmentId" FROM "doctors" AS d2
+)
+ORDER BY dep."name";
+                  id                  |   name   
+--------------------------------------+----------
+ 00000000-0000-4000-a000-000000000106 | Oncology
+(1 row)
+
+SELECT
+  a."id",
+  a."status",
+  CASE
+    WHEN a."status" IN ('BOOKED', 'CONFIRMED') THEN 'PIPELINE'
+    WHEN a."status" = 'COMPLETED' THEN 'DONE'
+    ELSE 'CANCELLED'
+  END AS pipeline_bucket
+FROM "appointments" AS a
+ORDER BY a."appointmentDate";
+                  id                  |        status        | pipeline_bucket 
+--------------------------------------+----------------------+-----------------
+ 00000000-0000-4000-a000-000000000501 | COMPLETED            | DONE
+ 00000000-0000-4000-a000-000000000502 | COMPLETED            | DONE
+ 00000000-0000-4000-a000-000000000503 | COMPLETED            | DONE
+ 00000000-0000-4000-a000-000000000504 | COMPLETED            | DONE
+ 00000000-0000-4000-a000-000000000505 | CANCELLED_BY_PATIENT | CANCELLED
+ 00000000-0000-4000-a000-000000000506 | CANCELLED_BY_DOCTOR  | CANCELLED
+ 00000000-0000-4000-a000-000000000507 | CANCELLED_BY_ADMIN   | CANCELLED
+ 00000000-0000-4000-a000-000000000508 | CONFIRMED            | PIPELINE
+ 00000000-0000-4000-a000-000000000509 | CONFIRMED            | PIPELINE
+ 00000000-0000-4000-a000-000000000510 | BOOKED               | PIPELINE
+ 00000000-0000-4000-a000-000000000515 | CONFIRMED            | PIPELINE
+ 00000000-0000-4000-a000-000000000512 | BOOKED               | PIPELINE
+ 00000000-0000-4000-a000-000000000511 | BOOKED               | PIPELINE
+ 00000000-0000-4000-a000-000000000513 | BOOKED               | PIPELINE
+ 00000000-0000-4000-a000-000000000514 | BOOKED               | PIPELINE
+(15 rows)
+
+SELECT
+  p."firstName",
+  p."lastName",
+  COALESCE(p."phone", 'NO_PHONE_ON_FILE') AS contact_phone,
+  COALESCE(p."bloodGroup", 'UNKNOWN') AS blood_group_display
+FROM "patients" AS p
+ORDER BY p."lastName";
+ firstName | lastName |  contact_phone   | blood_group_display 
+-----------+----------+------------------+---------------------
+ Meera     | Iyer     | 9876543215       | UNKNOWN
+ Amit      | Joshi    | 9876543212       | B+
+ Rahul     | Kumar    | 9876543210       | O+
+ Suresh    | Nair     | NO_PHONE_ON_FILE | O+
+ Sneha     | Patel    | 9876543211       | A+
+ Kavya     | Reddy    | 9876543213       | AB+
+(6 rows)
+
+SELECT
+  a."id",
+  a."status",
+  NULLIF(a."cancellationReason", '') AS cancellation_reason_or_null
+FROM "appointments" AS a
+WHERE a."status"::TEXT LIKE 'CANCELLED%'
+ORDER BY a."appointmentDate";
+                  id                  |        status        |    cancellation_reason_or_null     
+--------------------------------------+----------------------+------------------------------------
+ 00000000-0000-4000-a000-000000000505 | CANCELLED_BY_PATIENT | Personal emergency
+ 00000000-0000-4000-a000-000000000506 | CANCELLED_BY_DOCTOR  | Doctor attending a conference
+ 00000000-0000-4000-a000-000000000507 | CANCELLED_BY_ADMIN   | Duplicate booking removed by admin
+(3 rows)
+
+SELECT
+  p."firstName",
+  p."lastName",
+  p."dateOfBirth",
+  DATE '2026-10-10' AS census_date,
+  EXTRACT(YEAR FROM AGE(DATE '2026-10-10', p."dateOfBirth")) AS age_years
+FROM "patients" AS p
+WHERE p."dateOfBirth" IS NOT NULL
+ORDER BY age_years DESC;
+ firstName | lastName | dateOfBirth | census_date | age_years 
+-----------+----------+-------------+-------------+-----------
+ Suresh    | Nair     | 1978-07-04  | 2026-10-10  |        48
+ Amit      | Joshi    | 1985-03-10  | 2026-10-10  |        41
+ Rahul     | Kumar    | 1990-05-15  | 2026-10-10  |        36
+ Sneha     | Patel    | 1995-08-22  | 2026-10-10  |        31
+ Kavya     | Reddy    | 2000-11-30  | 2026-10-10  |        25
+(5 rows)
+
+SELECT
+  a."id",
+  a."appointmentDate",
+  TO_CHAR(a."appointmentDate", 'YYYY-MM') AS year_month,
+  TO_CHAR(a."appointmentDate", 'Day') AS weekday_name,
+  EXTRACT(ISODOW FROM a."appointmentDate") AS iso_dow
+FROM "appointments" AS a
+ORDER BY a."appointmentDate";
+                  id                  | appointmentDate | year_month | weekday_name | iso_dow 
+--------------------------------------+-----------------+------------+--------------+---------
+ 00000000-0000-4000-a000-000000000501 | 2026-08-13      | 2026-08    | Thursday     |       4
+ 00000000-0000-4000-a000-000000000502 | 2026-08-18      | 2026-08    | Tuesday      |       2
+ 00000000-0000-4000-a000-000000000503 | 2026-08-21      | 2026-08    | Friday       |       5
+ 00000000-0000-4000-a000-000000000504 | 2026-09-03      | 2026-09    | Thursday     |       4
+ 00000000-0000-4000-a000-000000000505 | 2026-09-08      | 2026-09    | Tuesday      |       2
+ 00000000-0000-4000-a000-000000000506 | 2026-09-14      | 2026-09    | Monday       |       1
+ 00000000-0000-4000-a000-000000000507 | 2026-09-21      | 2026-09    | Monday       |       1
+ 00000000-0000-4000-a000-000000000508 | 2026-10-07      | 2026-10    | Wednesday    |       3
+ 00000000-0000-4000-a000-000000000509 | 2026-10-12      | 2026-10    | Monday       |       1
+ 00000000-0000-4000-a000-000000000510 | 2026-10-15      | 2026-10    | Thursday     |       4
+ 00000000-0000-4000-a000-000000000515 | 2026-10-15      | 2026-10    | Thursday     |       4
+ 00000000-0000-4000-a000-000000000512 | 2026-10-19      | 2026-10    | Monday       |       1
+ 00000000-0000-4000-a000-000000000511 | 2026-10-20      | 2026-10    | Tuesday      |       2
+ 00000000-0000-4000-a000-000000000513 | 2026-11-06      | 2026-11    | Friday       |       5
+ 00000000-0000-4000-a000-000000000514 | 2026-11-09      | 2026-11    | Monday       |       1
+(15 rows)
+
+SELECT
+  u."email",
+  SPLIT_PART(u."email", '@', 1) AS email_local_part,
+  UPPER(p."lastName") AS last_name_upper,
+  LENGTH(p."firstName") AS first_name_length
+FROM "patients" AS p
+JOIN "users" AS u ON u."id" = p."userId"
+ORDER BY p."lastName";
+                     email                     |    email_local_part     | last_name_upper | first_name_length 
+-----------------------------------------------+-------------------------+-----------------+-------------------
+ demo.patient.incomplete@medicore.dbms.example | demo.patient.incomplete | IYER            |                 5
+ demo.patient.joshi@medicore.dbms.example      | demo.patient.joshi      | JOSHI           |                 4
+ demo.patient.kumar@medicore.dbms.example      | demo.patient.kumar      | KUMAR           |                 5
+ demo.patient.nair@medicore.dbms.example       | demo.patient.nair       | NAIR            |                 6
+ demo.patient.patel@medicore.dbms.example      | demo.patient.patel      | PATEL           |                 5
+ demo.patient.reddy@medicore.dbms.example      | demo.patient.reddy      | REDDY           |                 5
+(6 rows)
+
+SELECT
+  d."firstName",
+  d."lastName",
+  d."consultationFee",
+  ROUND(d."consultationFee" * 0.18, 2) AS gst_component,
+  ROUND(d."consultationFee" * 1.18, 2) AS fee_with_gst,
+  d."experienceYears",
+  ROUND(d."consultationFee" / NULLIF(d."experienceYears", 0), 2) AS fee_per_year_experience
+FROM "doctors" AS d
+WHERE d."consultationFee" IS NOT NULL
+ORDER BY d."consultationFee" DESC;
+ firstName | lastName | consultationFee | gst_component | fee_with_gst | experienceYears | fee_per_year_experience 
+-----------+----------+-----------------+---------------+--------------+-----------------+-------------------------
+ Arjun     | Sharma   |          800.00 |        144.00 |       944.00 |              14 |                   57.14
+ Rohan     | Mehta    |          750.00 |        135.00 |       885.00 |               9 |                   83.33
+ Priya     | Kapoor   |          700.00 |        126.00 |       826.00 |              11 |                   63.64
+ Kavita    | Rao      |          680.00 |        122.40 |       802.40 |              12 |                   56.67
+ Neha      | Gupta    |          650.00 |        117.00 |       767.00 |               7 |                   92.86
+ Anjali    | Singh    |          600.00 |        108.00 |       708.00 |               8 |                   75.00
+(6 rows)
+
+SELECT
+  CONCAT(p."lastName", ', ', p."firstName") AS patient_label,
+  TRIM(BOTH FROM a."reasonForVisit") AS reason,
+  a."appointmentDate"
+FROM "appointments" AS a
+JOIN "patients" AS p ON p."id" = a."patientId"
+ORDER BY patient_label, a."appointmentDate";
+ patient_label |                  reason                  | appointmentDate 
+---------------+------------------------------------------+-----------------
+ Iyer, Meera   | Vaccination advice                       | 2026-11-09
+ Joshi, Amit   | Headache evaluation                      | 2026-09-08
+ Joshi, Amit   | Knee pain after sports injury            | 2026-10-07
+ Kumar, Rahul  | Follow-up after ECG                      | 2026-08-13
+ Kumar, Rahul  | Chest discomfort on exertion             | 2026-09-03
+ Kumar, Rahul  | Chest discomfort and shortness of breath | 2026-10-15
+ Kumar, Rahul  | Shoulder stiffness                       | 2026-11-06
+ Nair, Suresh  | Back pain                                | 2026-08-21
+ Nair, Suresh  | Hypertension review                      | 2026-10-19
+ Patel, Sneha  | Recurring headaches                      | 2026-08-18
+ Patel, Sneha  | Child wellness visit booked in error     | 2026-09-21
+ Patel, Sneha  | Cardiology follow-up                     | 2026-10-15
+ Patel, Sneha  | Follow-up for headaches                  | 2026-10-20
+ Reddy, Kavya  | Palpitations                             | 2026-09-14
+ Reddy, Kavya  | Routine child health checkup             | 2026-10-12
+(15 rows)
+
+SELECT
+  d."firstName",
+  d."lastName",
+  dep."name" AS department_name,
+  COUNT(*) FILTER (WHERE a."status" = 'COMPLETED') AS completed_visits,
+  RANK() OVER (ORDER BY COUNT(*) FILTER (WHERE a."status" = 'COMPLETED') DESC) AS visit_rank,
+  DENSE_RANK() OVER (
+    PARTITION BY dep."id"
+    ORDER BY COUNT(*) FILTER (WHERE a."status" = 'COMPLETED') DESC
+  ) AS dept_dense_rank,
+  ROW_NUMBER() OVER (ORDER BY d."lastName", d."firstName") AS directory_row
+FROM "doctors" AS d
+JOIN "departments" AS dep ON dep."id" = d."departmentId"
+LEFT JOIN "appointments" AS a ON a."doctorId" = d."id"
+GROUP BY d."id", d."firstName", d."lastName", dep."id", dep."name"
+ORDER BY completed_visits DESC, d."lastName";
+ firstName | lastName | department_name | completed_visits | visit_rank | dept_dense_rank | directory_row 
+-----------+----------+-----------------+------------------+------------+-----------------+---------------
+ Arjun     | Sharma   | Cardiology      |                2 |          1 |               1 |             5
+ Priya     | Kapoor   | Neurology       |                1 |          2 |               1 |             2
+ Rohan     | Mehta    | Orthopedics     |                1 |          2 |               1 |             3
+ Neha      | Gupta    | Dermatology     |                0 |          4 |               1 |             1
+ Kavita    | Rao      | Dermatology     |                0 |          4 |               1 |             4
+ Anjali    | Singh    | Pediatrics      |                0 |          4 |               1 |             6
+(6 rows)
+
+SELECT
+  a."appointmentDate",
+  d."lastName" AS doctor_last,
+  d."consultationFee",
+  SUM(d."consultationFee") OVER (
+    ORDER BY a."appointmentDate", a."startTime", a."id"
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+  ) AS running_completed_fees
+FROM "appointments" AS a
+JOIN "doctors" AS d ON d."id" = a."doctorId"
+WHERE a."status" = 'COMPLETED'
+ORDER BY a."appointmentDate", a."startTime";
+ appointmentDate | doctor_last | consultationFee | running_completed_fees 
+-----------------+-------------+-----------------+------------------------
+ 2026-08-13      | Sharma      |          800.00 |                 800.00
+ 2026-08-18      | Kapoor      |          700.00 |                1500.00
+ 2026-08-21      | Mehta       |          750.00 |                2250.00
+ 2026-09-03      | Sharma      |          800.00 |                3050.00
+(4 rows)
+
+SELECT
+  p."lastName",
+  a."appointmentDate",
+  a."status",
+  LAG(a."appointmentDate") OVER (
+    PARTITION BY a."patientId"
+    ORDER BY a."appointmentDate", a."startTime"
+  ) AS previous_visit_date,
+  a."appointmentDate" - LAG(a."appointmentDate") OVER (
+    PARTITION BY a."patientId"
+    ORDER BY a."appointmentDate", a."startTime"
+  ) AS days_since_previous
+FROM "appointments" AS a
+JOIN "patients" AS p ON p."id" = a."patientId"
+ORDER BY p."lastName", a."appointmentDate";
+ lastName | appointmentDate |        status        | previous_visit_date | days_since_previous 
+----------+-----------------+----------------------+---------------------+---------------------
+ Iyer     | 2026-11-09      | BOOKED               |                     |                    
+ Joshi    | 2026-09-08      | CANCELLED_BY_PATIENT |                     |                    
+ Joshi    | 2026-10-07      | CONFIRMED            | 2026-09-08          |                  29
+ Kumar    | 2026-08-13      | COMPLETED            |                     |                    
+ Kumar    | 2026-09-03      | COMPLETED            | 2026-08-13          |                  21
+ Kumar    | 2026-10-15      | BOOKED               | 2026-09-03          |                  42
+ Kumar    | 2026-11-06      | BOOKED               | 2026-10-15          |                  22
+ Nair     | 2026-08-21      | COMPLETED            |                     |                    
+ Nair     | 2026-10-19      | BOOKED               | 2026-08-21          |                  59
+ Patel    | 2026-08-18      | COMPLETED            |                     |                    
+ Patel    | 2026-09-21      | CANCELLED_BY_ADMIN   | 2026-08-18          |                  34
+ Patel    | 2026-10-15      | CONFIRMED            | 2026-09-21          |                  24
+ Patel    | 2026-10-20      | BOOKED               | 2026-10-15          |                   5
+ Reddy    | 2026-09-14      | CANCELLED_BY_DOCTOR  |                     |                    
+ Reddy    | 2026-10-12      | CONFIRMED            | 2026-09-14          |                  28
+(15 rows)
+
+SELECT
+  d."lastName",
+  a."appointmentDate",
+  a."startTime",
+  a."status",
+  LEAD(a."appointmentDate") OVER (
+    PARTITION BY a."doctorId"
+    ORDER BY a."appointmentDate", a."startTime"
+  ) AS next_appointment_date,
+  LEAD(a."startTime") OVER (
+    PARTITION BY a."doctorId"
+    ORDER BY a."appointmentDate", a."startTime"
+  ) AS next_start_time
+FROM "appointments" AS a
+JOIN "doctors" AS d ON d."id" = a."doctorId"
+ORDER BY d."lastName", a."appointmentDate", a."startTime";
+ lastName | appointmentDate | startTime |        status        | next_appointment_date | next_start_time 
+----------+-----------------+-----------+----------------------+-----------------------+-----------------
+ Kapoor   | 2026-08-18      | 10:00     | COMPLETED            | 2026-09-08            | 10:00
+ Kapoor   | 2026-09-08      | 10:00     | CANCELLED_BY_PATIENT | 2026-10-20            | 11:00
+ Kapoor   | 2026-10-20      | 11:00     | BOOKED               |                       | 
+ Mehta    | 2026-08-21      | 14:00     | COMPLETED            | 2026-10-07            | 09:00
+ Mehta    | 2026-10-07      | 09:00     | CONFIRMED            | 2026-11-06            | 14:00
+ Mehta    | 2026-11-06      | 14:00     | BOOKED               |                       | 
+ Sharma   | 2026-08-13      | 09:30     | COMPLETED            | 2026-09-03            | 10:00
+ Sharma   | 2026-09-03      | 10:00     | COMPLETED            | 2026-09-14            | 09:00
+ Sharma   | 2026-09-14      | 09:00     | CANCELLED_BY_DOCTOR  | 2026-10-15            | 10:00
+ Sharma   | 2026-10-15      | 10:00     | BOOKED               | 2026-10-15            | 10:30
+ Sharma   | 2026-10-15      | 10:30     | CONFIRMED            | 2026-10-19            | 14:00
+ Sharma   | 2026-10-19      | 14:00     | BOOKED               |                       | 
+ Singh    | 2026-09-21      | 09:00     | CANCELLED_BY_ADMIN   | 2026-10-12            | 09:20
+ Singh    | 2026-10-12      | 09:20     | CONFIRMED            | 2026-11-09            | 10:00
+ Singh    | 2026-11-09      | 10:00     | BOOKED               |                       | 
+(15 rows)
+
+EXIT_CODE=0

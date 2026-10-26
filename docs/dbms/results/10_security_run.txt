@@ -1,0 +1,295 @@
+-- MediCore DBMS execution evidence
+-- Run (UTC): 2026-10-13T09:06:20Z
+-- Container: medicore_dbms_test   Database: medicore_dbms_final   Role: postgres
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+-- psql flags: -X -v ON_ERROR_STOP=1 -e
+-- File: docs/dbms/sql/10_security.sql
+
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN SELECT * FROM (VALUES
+      ('medicore_dbms_admin',      FALSE),
+      ('medicore_dbms_reporting',  FALSE),
+      ('medicore_dbms_operator',   FALSE),
+      ('medicore_dbms_demo_login', TRUE)) AS v(name, can_login)
+  LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r.name) THEN
+      EXECUTE format('CREATE ROLE %I %s NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS INHERIT',
+                     r.name, CASE WHEN r.can_login THEN 'LOGIN' ELSE 'NOLOGIN' END);
+      RAISE NOTICE 'created role %', r.name;
+    ELSE
+      RAISE NOTICE 'role % already exists (kept)', r.name;
+    END IF;
+  END LOOP;
+END $$;
+NOTICE:  role medicore_dbms_admin already exists (kept)
+NOTICE:  role medicore_dbms_reporting already exists (kept)
+NOTICE:  role medicore_dbms_operator already exists (kept)
+DO
+COMMENT ON ROLE medicore_dbms_admin      IS 'DBMS demo: data administrator — DML on base tables, read-only audit, no DDL.';
+NOTICE:  role medicore_dbms_demo_login already exists (kept)
+COMMENT
+COMMENT ON ROLE medicore_dbms_reporting  IS 'DBMS demo: read-only reporting through vw_dbms_* views only.';
+COMMENT
+COMMENT ON ROLE medicore_dbms_operator   IS 'DBMS demo: workflow operator — may only change data through the stored procedures.';
+COMMENT
+COMMENT ON ROLE medicore_dbms_demo_login IS 'DBMS demo: restricted login account used to prove allowed/denied access.';
+COMMENT
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+REVOKE
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
+REVOKE
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC;
+REVOKE
+REVOKE EXECUTE ON ALL ROUTINES IN SCHEMA public FROM PUBLIC;
+REVOKE
+GRANT USAGE ON SCHEMA public TO medicore_dbms_admin, medicore_dbms_reporting, medicore_dbms_operator;
+GRANT
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+  "users", "patients", "departments", "doctors", "doctor_availability",
+  "appointments", "feedback", "queries", "chat_conversations", "chat_messages"
+  TO medicore_dbms_admin;
+GRANT
+GRANT SELECT ON "appointment_status_audit" TO medicore_dbms_admin;
+GRANT
+GRANT SELECT ON "vw_dbms_appointment_details", "vw_dbms_doctor_appointment_stats",
+                "vw_dbms_public_doctor_directory" TO medicore_dbms_admin;
+GRANT
+GRANT EXECUTE ON PROCEDURE sp_cancel_appointment(UUID, "AppointmentStatus", TEXT, TIMESTAMPTZ),
+                           sp_respond_to_query(UUID, "QueryStatus", TEXT) TO medicore_dbms_admin;
+GRANT
+GRANT EXECUTE ON FUNCTION fn_doctor_completed_count(UUID),
+                          fn_patient_upcoming_count(UUID, DATE) TO medicore_dbms_admin;
+GRANT
+GRANT SELECT ON "vw_dbms_appointment_details", "vw_dbms_doctor_appointment_stats",
+                "vw_dbms_public_doctor_directory" TO medicore_dbms_reporting;
+GRANT
+GRANT EXECUTE ON PROCEDURE sp_cancel_appointment(UUID, "AppointmentStatus", TEXT, TIMESTAMPTZ),
+                           sp_respond_to_query(UUID, "QueryStatus", TEXT) TO medicore_dbms_operator;
+GRANT
+GRANT SELECT ON "vw_dbms_appointment_details" TO medicore_dbms_operator;
+GRANT
+GRANT medicore_dbms_reporting TO medicore_dbms_demo_login;
+NOTICE:  role "medicore_dbms_demo_login" is already a member of role "medicore_dbms_reporting"
+GRANT ROLE
+REVOKE medicore_dbms_operator FROM medicore_dbms_demo_login;
+WARNING:  role "medicore_dbms_demo_login" is not a member of role "medicore_dbms_operator"
+REVOKE ROLE
+                            List of roles
+        Role name         |  Attributes  |         Member of         
+--------------------------+--------------+---------------------------
+ medicore_dbms_admin      | Cannot login | {}
+ medicore_dbms_demo_login |              | {medicore_dbms_reporting}
+ medicore_dbms_operator   | Cannot login | {}
+ medicore_dbms_reporting  | Cannot login | {}
+
+                                        Access privileges
+ Schema |     Name     | Type  |         Access privileges         | Column privileges | Policies 
+--------+--------------+-------+-----------------------------------+-------------------+----------
+ public | appointments | table | postgres=arwdDxt/postgres        +|                   | 
+        |              |       | medicore_dbms_admin=arwd/postgres |                   | 
+(1 row)
+
+                            Access privileges
+ Schema | Name | Type | Access privileges | Column privileges | Policies 
+--------+------+------+-------------------+-------------------+----------
+(0 rows)
+
+WITH roles(role_name) AS (VALUES ('medicore_dbms_admin'), ('medicore_dbms_reporting'),
+                                 ('medicore_dbms_operator'), ('medicore_dbms_demo_login')),
+objects(object_name, kind) AS (VALUES
+  ('appointments', 't'), ('patients', 't'), ('queries', 't'), ('appointment_status_audit', 't'),
+  ('vw_dbms_appointment_details', 't'), ('vw_dbms_doctor_appointment_stats', 't'),
+  ('vw_dbms_public_doctor_directory', 't'))
+SELECT o.object_name,
+       r.role_name,
+       concat_ws(',',
+         CASE WHEN has_table_privilege(r.role_name, format('%I', o.object_name), 'SELECT') THEN 'SELECT' END,
+         CASE WHEN has_table_privilege(r.role_name, format('%I', o.object_name), 'INSERT') THEN 'INSERT' END,
+         CASE WHEN has_table_privilege(r.role_name, format('%I', o.object_name), 'UPDATE') THEN 'UPDATE' END,
+         CASE WHEN has_table_privilege(r.role_name, format('%I', o.object_name), 'DELETE') THEN 'DELETE' END
+       ) AS privileges
+FROM objects o CROSS JOIN roles r
+ORDER BY o.object_name, r.role_name;
+           object_name            |        role_name         |         privileges          
+----------------------------------+--------------------------+-----------------------------
+ appointments                     | medicore_dbms_admin      | SELECT,INSERT,UPDATE,DELETE
+ appointments                     | medicore_dbms_demo_login | 
+ appointments                     | medicore_dbms_operator   | 
+ appointments                     | medicore_dbms_reporting  | 
+ appointment_status_audit         | medicore_dbms_admin      | SELECT
+ appointment_status_audit         | medicore_dbms_demo_login | 
+ appointment_status_audit         | medicore_dbms_operator   | 
+ appointment_status_audit         | medicore_dbms_reporting  | 
+ patients                         | medicore_dbms_admin      | SELECT,INSERT,UPDATE,DELETE
+ patients                         | medicore_dbms_demo_login | 
+ patients                         | medicore_dbms_operator   | 
+ patients                         | medicore_dbms_reporting  | 
+ queries                          | medicore_dbms_admin      | SELECT,INSERT,UPDATE,DELETE
+ queries                          | medicore_dbms_demo_login | 
+ queries                          | medicore_dbms_operator   | 
+ queries                          | medicore_dbms_reporting  | 
+ vw_dbms_appointment_details      | medicore_dbms_admin      | SELECT
+ vw_dbms_appointment_details      | medicore_dbms_demo_login | SELECT
+ vw_dbms_appointment_details      | medicore_dbms_operator   | SELECT
+ vw_dbms_appointment_details      | medicore_dbms_reporting  | SELECT
+ vw_dbms_doctor_appointment_stats | medicore_dbms_admin      | SELECT
+ vw_dbms_doctor_appointment_stats | medicore_dbms_demo_login | SELECT
+ vw_dbms_doctor_appointment_stats | medicore_dbms_operator   | 
+ vw_dbms_doctor_appointment_stats | medicore_dbms_reporting  | SELECT
+ vw_dbms_public_doctor_directory  | medicore_dbms_admin      | SELECT
+ vw_dbms_public_doctor_directory  | medicore_dbms_demo_login | SELECT
+ vw_dbms_public_doctor_directory  | medicore_dbms_operator   | 
+ vw_dbms_public_doctor_directory  | medicore_dbms_reporting  | SELECT
+(28 rows)
+
+SELECT p.proname AS routine, r.role_name,
+       has_function_privilege(r.role_name, p.oid, 'EXECUTE') AS can_execute
+FROM pg_proc p
+CROSS JOIN (VALUES ('medicore_dbms_admin'), ('medicore_dbms_reporting'),
+                   ('medicore_dbms_operator'), ('medicore_dbms_demo_login'), ('public')) AS r(role_name)
+WHERE p.pronamespace = 'public'::regnamespace AND p.proname ~ '^(sp|fn)_'
+  AND r.role_name <> 'public'
+ORDER BY routine, r.role_name;
+          routine          |        role_name         | can_execute 
+---------------------------+--------------------------+-------------
+ fn_doctor_completed_count | medicore_dbms_admin      | t
+ fn_doctor_completed_count | medicore_dbms_demo_login | f
+ fn_doctor_completed_count | medicore_dbms_operator   | f
+ fn_doctor_completed_count | medicore_dbms_reporting  | f
+ fn_patient_upcoming_count | medicore_dbms_admin      | t
+ fn_patient_upcoming_count | medicore_dbms_demo_login | f
+ fn_patient_upcoming_count | medicore_dbms_operator   | f
+ fn_patient_upcoming_count | medicore_dbms_reporting  | f
+ sp_cancel_appointment     | medicore_dbms_admin      | t
+ sp_cancel_appointment     | medicore_dbms_demo_login | f
+ sp_cancel_appointment     | medicore_dbms_operator   | t
+ sp_cancel_appointment     | medicore_dbms_reporting  | f
+ sp_respond_to_query       | medicore_dbms_admin      | t
+ sp_respond_to_query       | medicore_dbms_demo_login | f
+ sp_respond_to_query       | medicore_dbms_operator   | t
+ sp_respond_to_query       | medicore_dbms_reporting  | f
+(16 rows)
+
+SET ROLE medicore_dbms_demo_login;
+SET
+SELECT current_user, session_user;
+       current_user       | session_user 
+--------------------------+--------------
+ medicore_dbms_demo_login | postgres
+(1 row)
+
+SELECT last_name, department_name FROM "vw_dbms_public_doctor_directory" ORDER BY last_name;
+ last_name | department_name 
+-----------+-----------------
+ Kapoor    | Neurology
+ Mehta     | Orthopedics
+ Rao       | Dermatology
+ Sharma    | Cardiology
+ Singh     | Pediatrics
+(5 rows)
+
+SELECT doctor_name, total_appointments FROM "vw_dbms_doctor_appointment_stats" ORDER BY doctor_name;
+ doctor_name  | total_appointments 
+--------------+--------------------
+ Anjali Singh |                  3
+ Arjun Sharma |                  6
+ Kavita Rao   |                  0
+ Neha Gupta   |                  0
+ Priya Kapoor |                  3
+ Rohan Mehta  |                  3
+(6 rows)
+
+SELECT "firstName", "phone" FROM "patients";
+ERROR:  permission denied for table patients
+UPDATE "appointments" SET "notes" = 'x' WHERE "id" = '00000000-0000-4000-a000-000000000510';
+ERROR:  permission denied for table appointments
+CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CANCELLED_BY_ADMIN');
+ERROR:  permission denied for procedure sp_cancel_appointment
+RESET ROLE;
+RESET
+GRANT medicore_dbms_operator TO medicore_dbms_demo_login;
+GRANT ROLE
+BEGIN;
+BEGIN
+SET LOCAL ROLE medicore_dbms_demo_login;
+SET
+CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CANCELLED_BY_ADMIN',
+                           'Security demo', TIMESTAMPTZ '2026-10-10 09:00+00');
+CALL
+SELECT appointment_id, status, cancellation_reason
+FROM "vw_dbms_appointment_details"
+WHERE appointment_id = '00000000-0000-4000-a000-000000000510';
+            appointment_id            |       status       | cancellation_reason 
+--------------------------------------+--------------------+---------------------
+ 00000000-0000-4000-a000-000000000510 | CANCELLED_BY_ADMIN | Security demo
+(1 row)
+
+SAVEPOINT before_direct_update;
+SAVEPOINT
+UPDATE "appointments" SET "status" = 'BOOKED' WHERE "id" = '00000000-0000-4000-a000-000000000510';
+ERROR:  permission denied for table appointments
+ROLLBACK TO SAVEPOINT before_direct_update;
+ROLLBACK
+ROLLBACK;
+ROLLBACK
+REVOKE medicore_dbms_operator FROM medicore_dbms_demo_login;
+REVOKE ROLE
+SET ROLE medicore_dbms_demo_login;
+SET
+CALL sp_cancel_appointment('00000000-0000-4000-a000-000000000510', 'CANCELLED_BY_ADMIN',
+                           'Security demo', TIMESTAMPTZ '2026-10-10 09:00+00');
+ERROR:  permission denied for procedure sp_cancel_appointment
+RESET ROLE;
+RESET
+REVOKE SELECT ON "vw_dbms_public_doctor_directory" FROM medicore_dbms_reporting;
+REVOKE
+SET ROLE medicore_dbms_demo_login;
+SET
+SELECT COUNT(*) FROM "vw_dbms_public_doctor_directory";
+ERROR:  permission denied for view vw_dbms_public_doctor_directory
+RESET ROLE;
+RESET
+GRANT SELECT ON "vw_dbms_public_doctor_directory" TO medicore_dbms_reporting;
+GRANT
+SET ROLE medicore_dbms_demo_login;
+SET
+SELECT COUNT(*) AS directory_rows_after_regrant FROM "vw_dbms_public_doctor_directory";
+ directory_rows_after_regrant 
+------------------------------
+                            5
+(1 row)
+
+RESET ROLE;
+RESET
+BEGIN;
+BEGIN
+SET LOCAL ROLE medicore_dbms_admin;
+SET
+UPDATE "departments" SET "description" = "description" WHERE "name" = 'Oncology';
+UPDATE 1
+SAVEPOINT s;
+SAVEPOINT
+CREATE TABLE "admin_should_not_create" (id INT);
+ERROR:  permission denied for schema public
+LINE 1: CREATE TABLE "admin_should_not_create" (id INT);
+                     ^
+ROLLBACK TO SAVEPOINT s;
+ROLLBACK
+DELETE FROM "appointment_status_audit";
+ROLLBACK TO SAVEPOINT s;
+ERROR:  permission denied for table appointment_status_audit
+ROLLBACK
+ROLLBACK;
+ROLLBACK
+SELECT (SELECT "status" FROM "appointments" WHERE "id" = '00000000-0000-4000-a000-000000000510') AS appt_510,
+       (SELECT COUNT(*) FROM "appointment_status_audit") AS audit_rows,
+       pg_has_role('medicore_dbms_demo_login', 'medicore_dbms_operator', 'MEMBER') AS demo_login_is_operator;
+ appt_510 | audit_rows | demo_login_is_operator 
+----------+------------+------------------------
+ BOOKED   |          0 | f
+(1 row)
+
+EXIT_CODE=0

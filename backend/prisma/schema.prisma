@@ -1,0 +1,388 @@
+// This is your Prisma schema file.
+// Learn more about it at https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  COMPLETED
+  CANCELLED_BY_PATIENT
+  CANCELLED_BY_DOCTOR
+  CANCELLED_BY_ADMIN
+}
+
+enum QueryStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: users
+// Central authentication table for all roles.
+// Auth data is separated from role-specific profile data (3NF).
+// ─────────────────────────────────────────────────────────────
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @db.VarChar(255)
+  role         Role
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  // Relations
+  patient Patient?
+  doctor  Doctor?
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: patients
+// Patient-specific profile data, extending users (1:1).
+// ─────────────────────────────────────────────────────────────
+model Patient {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @unique @db.Uuid
+  firstName   String    @db.VarChar(100)
+  lastName    String    @db.VarChar(100)
+  dateOfBirth DateTime? @db.Date
+  gender      Gender?
+  phone       String?   @db.VarChar(20)
+  address     String?   @db.Text
+  bloodGroup  String?   @db.VarChar(5)
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @db.Timestamptz
+
+  // Relations
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments      Appointment[]
+  feedback          Feedback[]
+  queries           Query[]
+  chatConversations ChatConversation[]
+
+  @@map("patients")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: departments
+// Hospital departments. Normalizes department data out of doctors.
+// ─────────────────────────────────────────────────────────────
+model Department {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @db.Timestamptz
+
+  // Relations
+  doctors Doctor[]
+
+  @@map("departments")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: doctors
+// Doctor-specific profile data, extending users (1:1).
+// slot_duration_minutes allows per-doctor configuration.
+// ─────────────────────────────────────────────────────────────
+model Doctor {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId              String   @unique @db.Uuid
+  departmentId        String   @db.Uuid
+  firstName           String   @db.VarChar(100)
+  lastName            String   @db.VarChar(100)
+  specialization      String   @db.VarChar(200)
+  qualification       String   @db.VarChar(200)
+  experienceYears     Int?     @db.SmallInt
+  bio                 String?  @db.Text
+  phone               String?  @db.VarChar(20)
+  consultationFee     Decimal? @db.Decimal(10, 2)
+  slotDurationMinutes Int      @default(30) @db.SmallInt
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now()) @db.Timestamptz
+  updatedAt           DateTime @updatedAt @db.Timestamptz
+
+  // Relations
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department     Department           @relation(fields: [departmentId], references: [id])
+  availability   DoctorAvailability[]
+  appointments   Appointment[]
+  medicalRecords MedicalRecord[]
+
+  @@map("doctors")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: doctor_availability
+// Defines working time blocks for a doctor per day of week.
+// Slots are generated DYNAMICALLY from this table — not stored.
+// dayOfWeek: 0=Monday, 1=Tuesday, ..., 6=Sunday
+// ─────────────────────────────────────────────────────────────
+model DoctorAvailability {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  doctorId  String  @db.Uuid
+  dayOfWeek Int     @db.SmallInt // 0=Mon, 6=Sun
+  startTime String  @db.VarChar(5) // 'HH:MM'
+  endTime   String  @db.VarChar(5) // 'HH:MM'
+  isActive  Boolean @default(true)
+
+  // Relations
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  // No two blocks for the same doctor on the same day can start at the same time
+  @@unique([doctorId, dayOfWeek, startTime])
+  @@map("doctor_availability")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: appointments
+// Core appointment records.
+// Double-booking is prevented via a partial unique index (see migration SQL).
+// The partial index only applies when status is NOT a cancelled status.
+// ─────────────────────────────────────────────────────────────
+model Appointment {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId          String            @db.Uuid
+  doctorId           String            @db.Uuid
+  appointmentDate    DateTime          @db.Date
+  startTime          String            @db.VarChar(5) // 'HH:MM'
+  endTime            String            @db.VarChar(5) // 'HH:MM'
+  status             AppointmentStatus @default(BOOKED)
+  reasonForVisit     String?           @db.Text
+  notes              String?           @db.Text // Doctor-visible only
+  cancellationReason String?           @db.Text
+  cancelledAt        DateTime?         @db.Timestamptz
+  createdAt          DateTime          @default(now()) @db.Timestamptz
+  updatedAt          DateTime          @updatedAt @db.Timestamptz
+
+  // Relations
+  patient       Patient                  @relation(fields: [patientId], references: [id])
+  doctor        Doctor                   @relation(fields: [doctorId], references: [id])
+  statusAudits  AppointmentStatusAudit[]
+  medicalRecord MedicalRecord? // 0..1 per appointment (unique FK on medical_records)
+  bill          Bill? // 0..1 per appointment (unique FK on bills)
+
+  // Indexes for common query patterns
+  // (patientId, appointmentDate, startTime) serves the patient dashboard's
+  // "WHERE patientId = ? ORDER BY appointmentDate, startTime" without a sort,
+  // and its leftmost column still serves plain patientId lookups, so it
+  // replaces the former single-column patientId index (docs/dbms/indexing.md).
+  @@index([patientId, appointmentDate, startTime])
+  @@index([doctorId])
+  @@index([appointmentDate])
+  @@index([doctorId, appointmentDate])
+  @@map("appointments")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: appointment_status_audit
+// History of appointment status changes. Rows are written ONLY by the
+// database trigger trg_appointments_status_audit (see migration
+// 20261011130000_dbms_triggers_audit); the application never writes here.
+// Stores no notes, reasons or patient data — just who/when/old/new.
+// ─────────────────────────────────────────────────────────────
+model AppointmentStatusAudit {
+  id            BigInt            @id @default(autoincrement())
+  appointmentId String            @db.Uuid
+  oldStatus     AppointmentStatus
+  newStatus     AppointmentStatus
+  changedAt     DateTime          @default(now()) @db.Timestamptz
+  changedBy     String            @db.VarChar(63) // database session role (session_user)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId, changedAt])
+  @@map("appointment_status_audit")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: medical_records  (ER entity MEDICAL_RECORD)
+// Clinical record written by the attending doctor for one appointment.
+// appointmentId is UNIQUE → an appointment has zero or one record.
+// doctorId must equal the appointment's doctor; that cross-table rule is
+// enforced by trigger trg_medical_records_doctor_match (see migration
+// 20261025100000_medical_records_bills_prescriptions).
+// ─────────────────────────────────────────────────────────────
+model MedicalRecord {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appointmentId  String   @unique @db.Uuid
+  doctorId       String   @db.Uuid
+  diagnosis      String   @db.Text
+  treatmentNotes String?  @db.Text
+  recordDate     DateTime @default(dbgenerated("CURRENT_DATE")) @db.Date
+  createdAt      DateTime @default(now()) @db.Timestamptz
+  updatedAt      DateTime @updatedAt @db.Timestamptz
+
+  // Relations — RESTRICT: medical history is never removed by deleting its parents.
+  appointment   Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  doctor        Doctor         @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  prescriptions Prescription[]
+
+  @@index([doctorId])
+  @@map("medical_records")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: prescriptions  (ER entity PRESCRIPTION)
+// One medical record contains many prescription lines.
+// ─────────────────────────────────────────────────────────────
+model Prescription {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  medicalRecordId String   @db.Uuid
+  medicineName    String   @db.VarChar(200)
+  dosage          String   @db.VarChar(100)
+  frequency       String   @db.VarChar(100)
+  duration        String   @db.VarChar(100)
+  createdAt       DateTime @default(now()) @db.Timestamptz
+
+  // Relations — a prescription line has no meaning without its record.
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+
+  @@index([medicalRecordId])
+  @@map("prescriptions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: bills  (ER entity BILL)
+// Consultation bill for one appointment (appointmentId UNIQUE → 0..1).
+// amount is DECIMAL(10,2) with CHECK amount >= 0 (migration SQL).
+// paymentStatus is a controlled ENUM; paidAt is set when PAID.
+// ─────────────────────────────────────────────────────────────
+model Bill {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appointmentId String        @unique @db.Uuid
+  amount        Decimal       @db.Decimal(10, 2)
+  billDate      DateTime      @default(dbgenerated("CURRENT_DATE")) @db.Date
+  paymentStatus PaymentStatus @default(PENDING)
+  paidAt        DateTime?     @db.Timestamptz
+  createdAt     DateTime      @default(now()) @db.Timestamptz
+  updatedAt     DateTime      @updatedAt @db.Timestamptz
+
+  // Relations — RESTRICT: a billed appointment cannot be deleted.
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@index([paymentStatus])
+  @@map("bills")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: feedback
+// Patient satisfaction feedback submitted to admin.
+// ─────────────────────────────────────────────────────────────
+model Feedback {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId String   @db.Uuid
+  subject   String   @db.VarChar(200)
+  message   String   @db.Text
+  rating    Int?     @db.SmallInt // 1–5
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  // Relations
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+  @@map("feedback")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: queries
+// Patient support queries. Separate from feedback — can be responded to.
+// ─────────────────────────────────────────────────────────────
+model Query {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId     String      @db.Uuid
+  subject       String      @db.VarChar(200)
+  message       String      @db.Text
+  status        QueryStatus @default(OPEN)
+  adminResponse String?     @db.Text
+  respondedAt   DateTime?   @db.Timestamptz
+  createdAt     DateTime    @default(now()) @db.Timestamptz
+  updatedAt     DateTime    @updatedAt @db.Timestamptz
+
+  // Relations
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+  @@map("queries")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: chat_conversations
+// Container for a patient's AI chat session.
+// One patient can have multiple conversations.
+// ─────────────────────────────────────────────────────────────
+model ChatConversation {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId String   @db.Uuid
+  title     String?  @db.VarChar(200)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  // Relations
+  patient  Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([patientId])
+  @@map("chat_conversations")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLE: chat_messages
+// Individual messages within a chat conversation.
+// role: USER (patient input) or ASSISTANT (AI response)
+// ─────────────────────────────────────────────────────────────
+model ChatMessage {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String      @db.Uuid
+  role           MessageRole
+  content        String      @db.Text
+  tokenCount     Int?
+  createdAt      DateTime    @default(now()) @db.Timestamptz
+
+  // Relations
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Ordered retrieval index
+  @@index([conversationId, createdAt])
+  @@map("chat_messages")
+}

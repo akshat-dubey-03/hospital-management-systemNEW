@@ -1,0 +1,147 @@
+-- Seed repeatability evidence
+-- Run (UTC): 2026-10-11T11:47:08Z
+-- Database: medicore_dbms_seedtest (fresh, prisma migrate deploy), container medicore_dbms_prisma, PostgreSQL 15.15
+
+==== seed run 1 (SEED_ANCHOR_DATE=2026-10-12) ====
+  ✓ 6 departments
+  ✓ 10 appointments
+  ✓ 3 feedback entries
+  ✓ 3 queries
+  ✓ 1 sample conversation with 4 messages
+✅ Seed completed (anchor date 2026-10-12).
+EXIT_CODE=0
+---- counts after run 1
+     table_name      | row_count 
+---------------------+-----------
+ users               |        12
+ departments         |         6
+ patients            |         5
+ doctors             |         6
+ doctor_availability |        32
+ appointments        |        10
+ feedback            |         3
+ queries             |         3
+ chat_conversations  |         1
+ chat_messages       |         4
+(10 rows)
+
+       check_name        | duplicates 
+-------------------------+------------
+ duplicate appointments  |          0
+ duplicate feedback      |          0
+ duplicate queries       |          0
+ duplicate chat messages |          0
+(4 rows)
+
+ appointments_outside_availability 
+-----------------------------------
+                                 0
+(1 row)
+
+
+==== seed run 2 (SEED_ANCHOR_DATE=2026-10-12) ====
+  ✓ 6 departments
+  ✓ 10 appointments
+  ✓ 3 feedback entries
+  ✓ 3 queries
+  ✓ 1 sample conversation with 4 messages
+✅ Seed completed (anchor date 2026-10-12).
+EXIT_CODE=0
+---- counts after run 2
+     table_name      | row_count 
+---------------------+-----------
+ users               |        12
+ departments         |         6
+ patients            |         5
+ doctors             |         6
+ doctor_availability |        32
+ appointments        |        10
+ feedback            |         3
+ queries             |         3
+ chat_conversations  |         1
+ chat_messages       |         4
+(10 rows)
+
+       check_name        | duplicates 
+-------------------------+------------
+ duplicate appointments  |          0
+ duplicate feedback      |          0
+ duplicate queries       |          0
+ duplicate chat messages |          0
+(4 rows)
+
+ appointments_outside_availability 
+-----------------------------------
+                                 0
+(1 row)
+
+
+==== seed run 3 (SEED_ANCHOR_DATE=2026-11-02: dates move, rows must not multiply) ====
+✅ Seed completed (anchor date 2026-11-02).
+     table_name      | row_count 
+---------------------+-----------
+ users               |        12
+ departments         |         6
+ patients            |         5
+ doctors             |         6
+ doctor_availability |        32
+ appointments        |        10
+ feedback            |         3
+ queries             |         3
+ chat_conversations  |         1
+ chat_messages       |         4
+(10 rows)
+
+       check_name        | duplicates 
+-------------------------+------------
+ duplicate appointments  |          0
+ duplicate feedback      |          0
+ duplicate queries       |          0
+ duplicate chat messages |          0
+(4 rows)
+
+ appointments_outside_availability 
+-----------------------------------
+                                 0
+(1 row)
+
+
+==== atomicity check: block appointment 505's slot for anchor 2026-12-07 (Verma, Thu 2026-12-17 08:30) ====
+INSERT INTO appointments ("patientId","doctorId","appointmentDate","startTime","endTime",status,"updatedAt") SELECT p.id, d.id, DATE '2026-12-17', '08:30', '09:00', 'BOOKED', now() FROM patients p, doctors d JOIN users u ON u.id = d."userId" WHERE u.email = 'dr.verma@medicore.dev' AND p."lastName" = 'Joshi';
+INSERT 0 1
+---- seeded appointments BEFORE failing run
+ seed_appt | appointmentDate | startTime |        status        
+-----------+-----------------+-----------+----------------------
+ 501       | 2026-11-10      | 10:00     | BOOKED
+ 502       | 2026-11-10      | 11:00     | BOOKED
+ 503       | 2026-11-04      | 09:00     | CONFIRMED
+ 504       | 2026-11-09      | 14:00     | CONFIRMED
+ 505       | 2026-11-12      | 08:30     | CONFIRMED
+ 506       | 2026-10-15      | 09:30     | COMPLETED
+ 507       | 2026-10-26      | 10:00     | COMPLETED
+ 508       | 2026-10-02      | 14:00     | COMPLETED
+ 509       | 2026-10-26      | 10:00     | CANCELLED_BY_PATIENT
+ 510       | 2026-10-21      | 09:00     | CANCELLED_BY_DOCTOR
+(10 rows)
+
+---- seed run with SEED_ANCHOR_DATE=2026-12-07 (expected to fail on the partial unique index)
+  ✓ 6 departments
+❌ Seed failed: PrismaClientKnownRequestError: 
+Unique constraint failed on the fields: (`doctorId`,`appointmentDate`,`startTime`)
+  code: 'P2002',
+EXIT_CODE=1
+---- seeded appointments AFTER failing run (must equal BEFORE: 501-504 were rolled back)
+ seed_appt | appointmentDate | startTime |        status        
+-----------+-----------------+-----------+----------------------
+ 501       | 2026-11-10      | 10:00     | BOOKED
+ 502       | 2026-11-10      | 11:00     | BOOKED
+ 503       | 2026-11-04      | 09:00     | CONFIRMED
+ 504       | 2026-11-09      | 14:00     | CONFIRMED
+ 505       | 2026-11-12      | 08:30     | CONFIRMED
+ 506       | 2026-10-15      | 09:30     | COMPLETED
+ 507       | 2026-10-26      | 10:00     | COMPLETED
+ 508       | 2026-10-02      | 14:00     | COMPLETED
+ 509       | 2026-10-26      | 10:00     | CANCELLED_BY_PATIENT
+ 510       | 2026-10-21      | 09:00     | CANCELLED_BY_DOCTOR
+(10 rows)
+

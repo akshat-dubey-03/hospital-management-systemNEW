@@ -1,0 +1,84 @@
+-- MediCore DBMS test suite run
+-- Run (UTC): 2026-10-13T09:02:43Z   Container: medicore_dbms_test   Database: medicore_dbms_tests1
+-- Server: PostgreSQL 15.15 (Debian 15.15-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+
+==== Setup: CREATE DATABASE + 01, 02, 06, 07, 08, 10, 12
+setup ok: 01_ddl.sql
+setup ok: 02_dml.sql
+setup ok: 06_views.sql
+setup ok: 07_procedures_functions.sql
+setup ok: 08_triggers.sql
+setup ok: 10_security.sql
+setup ok: 12_indexing_explain.sql
+
+==== SQL assertion suite: docs/dbms/tests/dbms_tests.sql
+ case_id |     area     | status |                                                         description                                                         |              detail              
+---------+--------------+--------+-----------------------------------------------------------------------------------------------------------------------------+----------------------------------
+ T01     | DDL          | PASS   | tables, enums, FKs, CHECKs, views, routines, triggers and the partial unique index exist                                    | 
+ T02     | Keys         | PASS   | duplicate primary key is rejected (unique_violation on users_pkey)                                                          | 
+ T03     | Keys         | PASS   | appointment referencing a non-existent patient is rejected (foreign_key_violation)                                          | 
+ T04     | Constraints  | PASS   | rating 0 and end<start rejected by CHECK; NULL rating and boundary values accepted                                          | 
+ T05     | Constraints  | PASS   | deleting a patient with appointments is RESTRICTed; deleting a conversation CASCADEs to its messages                        | 
+ T06     | Constraints  | PASS   | second ACTIVE booking of a slot is rejected; a CANCELLED slot can be rebooked                                               | 
+ T07     | Queries      | PASS   | status counts of the 15 demo appointments; CQ-04 returns only Kumar; BQ-C05 pairs Kumar-Nair                                | 
+ T08     | Views        | PASS   | detail view = 4-table join (0 mismatches); stats view totals = GROUP BY; directory hides inactive doctor                    | 
+ T09     | Functions    | PASS   | fn_doctor_completed_count(Sharma)=2, unknown=NULL; fn_patient_upcoming_count(Kumar, 2026-10-01)=2, unknown=NULL             | 
+ T10     | Procedures   | PASS   | sp_cancel_appointment sets status, trimmed reason, cancelledAt and updatedAt; sp_respond_to_query resolves with respondedAt | 
+ T11     | Procedures   | PASS   | completed/started appointment (55000), unknown id (P0002), non-cancel status (22023), CLOSED query (55000) are refused      | 
+ T12     | Triggers     | PASS   | status change writes 1 audit row (old/new/session_user); same-status and non-status updates write none                      | 
+ T13     | Triggers     | PASS   | response set -> respondedAt=now(); unchanged response keeps it; cleared -> NULL; blank -> NULL                              | 
+ T14     | Transactions | PASS   | failed inner block (savepoint) undoes only its own writes; outer work and its audit row survive until outer undo            | 
+ T15     | Security     | PASS   | reporting login reads the views; operator role can CALL the cancel procedure                                                | 
+ T16     | Security     | PASS   | reporting login is denied base tables, writes and procedures; operator is denied direct UPDATE (insufficient_privilege)     | 
+ T17     | Indexing     | PASS   | composite patient index exists, old single-column index gone, bounded upcoming query plans an Index Scan with no Sort       | 
+ T18     | Cursors      | PASS   | explicit cursor over active upcoming demo appointments fetches the same rows, in the same order, as the set-based query     | 508,509,510,515,512,511,513,514,
+ T19     | Isolation    | PASS   | after all cases: demo row counts unchanged and no audit rows (every case cleaned up)                                        | 
+(19 rows)
+
+ passed | failed | total 
+--------+--------+-------
+     19 |      0 |    19
+(1 row)
+
+SQL_SUITE_EXIT_CODE=0
+
+==== T20 two concurrent sessions book the same slot (A commits)
+sessions blocked on a lock while A was open: 1
+ERROR:  duplicate key value violates unique constraint "appointments_active_doctor_slot_unique"
+DETAIL:  Key ("doctorId", "appointmentDate", "startTime")=(00000000-0000-4000-a000-000000000306, 2026-12-04, 10:00) already exists.
+rows in the contested slot afterwards: 1
+
+==== T21 seed.js run twice -> identical row counts
+database: medicore_dbms_seedtest
+users|12
+departments|6
+patients|5
+doctors|6
+doctor_availability|32
+appointments|11
+feedback|3
+queries|3
+chat_conversations|1
+chat_messages|4
+duplicate appointments|0
+duplicate feedback|0
+duplicate queries|0
+duplicate chat messages|0
+0
+
+==== T22 Jest refuses a non-test database
+Refusing to run tests against database "medicore_db": the name must identify a dedicated test database (contain "test")
+
+==== T23 application Jest suites through the guard
+PASS src/modules/dashboard/dashboard.test.js (7.935 s)
+PASS src/modules/appointments/appointments.workflow.test.js (5.027 s)
+PASS src/modules/auth/auth.role-login.test.js (7.884 s)
+Test Suites: 3 passed, 3 total
+Tests:       23 passed, 23 total
+
+==== Multi-session / application cases
+case | area         | status   | detail
+T20  | Concurrency  | PASS     | B blocked on A's uncommitted insert, then got 23505; exactly 1 row in the slot
+T21  | Seed         | PASS     | two consecutive seed runs: identical counts, duplicate checks 0
+T22  | Isolation    | PASS     | Jest setup guard refused medicore_db before connecting
+T23  | App          | PASS     | Tests:       23 passed, 23 total
